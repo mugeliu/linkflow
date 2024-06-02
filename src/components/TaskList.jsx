@@ -1,40 +1,38 @@
 import React, { useState } from "react";
 
 const TaskList = () => {
-  const test = [
-    {
-      id: 1,
-      title: "Task 1",
-    },
-    {
-      id: 2,
-      title: "Task 2",
-    },
-    {
-      id: 3,
-      title: "Task 3",
-    },
-  ];
-
-  const [tasks, setTasks] = useState([...test]);
-  const [newTask, setNewTask] = useState("");
+  const [tasks, setTasks] = useState([]);
+  const [newTask, setNewTask] = useState(""); //newTask的初始默认值是"",每次调用setNewTask的时候都会更新newTask的值
 
   const handleAddTask = () => {
-    //setTasks("");
+    if (newTask.trim() === "") return;
+    setTasks([...tasks, { id: tasks.length, text: newTask }]);
+    setNewTask(""); //每次添加完任务后，将newTask的值置为空
+  };
+
+  const handleDeleteTask = (id) => {
+    confirm("test", id);
+    setTasks(
+      tasks.filter((tasks) => {
+        tasks.id !== id;
+      })
+    );
   };
 
   return (
     <div>
       <ul>
-        {tasks.map((task) => (
-          <li key={task.id}>{task.title}</li>
+        {tasks.map((tasks) => (
+          <li key={tasks.id}>
+            {tasks.text}
+            <button onClick={() => handleDeleteTask(tasks.id)}>Delete</button>
+          </li>
         ))}
       </ul>
       <input
         type="text"
         value={newTask}
         onChange={(e) => {
-          console.log(e);
           setNewTask(e.target.value);
         }}
         placeholder="Enter new task"
