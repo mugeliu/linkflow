@@ -1,35 +1,57 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./App.css";
 import TaskList from "./components/TaskList";
+import TaskInput from "./components/TaskInput";
 
 function App() {
-  const [tasks, setTasks] = useState([]);
-  const [newTask, setNewTask] = useState(""); //newTask的初始默认值是"",每次调用setNewTask的时候都会更新newTask的值
+  // 用useState来创建一个状态变量tasks，并存在localStorage中
+  const [tasks, setTasks] = useState(() => {
+    const setTasks = localStorage.getItem("tasks");
+    return setTasks ? JSON.parse(setTasks) : [];
+  });
 
-  const handleAddTask = () => {
-    if (newTask.trim() === "") return;
-    setTasks([...tasks, { id: tasks.length, text: newTask, completed: false }]);
-    setNewTask(""); //每次添加完任务后，将newTask的值置为空
+  useEffect(() => {
+    localStorage.setItem("tasks", JSON.stringify(tasks));
+  }, [tasks]);
+
+  // 添加任务
+  const handleAddTask = (newTask) => {
+    setTasks([
+      ...tasks,
+      { id: tasks.length + 1, text: newTask, completed: false },
+    ]);
   };
 
+  // 删除任务
   const handleDeleteTask = (taskId) => {
     //setTasks(tasks.filter(task => task.id !== taskId));
     setTasks(
-      tasks.filter((task) => {
-        return task.id !== taskId;
+      tasks.map((task) => {
+        if (task.id == taskId) {
+          return { ...task, completed: true };
+        }
+        return task;
       })
     );
   };
 
-  const onToggle = (taskId) => {};
+  // 点击取消完成任务
+  const toggleTask = (id) => {
+    setTasks(
+      tasks.map((task) =>
+        task.id === id ? { ...task, completed: !task.completed } : task
+      )
+    );
+  };
 
   return (
     <div>
       <TaskList
         tasks={tasks}
-        handleDeleteTask={handleDeleteTask}
-        onToggle={onToggle}
+        onDelete={handleDeleteTask}
+        onToggle={toggleTask}
       />
+      <TaskInput addTask={handleAddTask} />
     </div>
   );
 }

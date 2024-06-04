@@ -1,8 +1,18 @@
-import React from "react";
+import React, { useState } from "react";
 
-const TaskInput = ({ newTask, setNewTask, handleAddTask }) => {
+const TaskInput = ({ addTask }) => {
+  const [newTask, setNewTask] = useState(""); //newTask的初始默认值是"",每次调用setNewTask的时候都会更新newTask的值
+
+  const handleSubmit = (e) => {
+    e.preventDefault(); //阻止表单的默认刷新行为
+    if (newTask.trim()) {
+      addTask(newTask);
+      setNewTask(""); //每次添加完任务后，将newTask的值置为空
+    }
+  };
+
   return (
-    <div>
+    <form onSubmit={handleSubmit}>
       <input
         type="text"
         value={newTask}
@@ -11,14 +21,8 @@ const TaskInput = ({ newTask, setNewTask, handleAddTask }) => {
         }}
         placeholder="Enter new task"
       />
-      <button
-        onClick={() => {
-          handleAddTask();
-        }}
-      >
-        Add Task
-      </button>
-    </div>
+      <button type="submit">Add Task</button>
+    </form>
   );
 };
 
