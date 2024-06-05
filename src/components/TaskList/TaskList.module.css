@@ -1,0 +1,80 @@
+/* TaskList.module.css */
+
+.taskList {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+}
+
+.taskItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #ccc;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.taskItem:last-child {
+  border-bottom: none;
+}
+
+.taskTitle {
+  cursor: pointer;
+  flex: 1;
+}
+
+.taskTitle.completed {
+  text-decoration: line-through;
+  color: #999;
+}
+
+.buttonContainer {
+  display: flex;
+  gap: 5px; /* 控制按钮之间的间距 */
+}
+
+.taskButton {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.taskButton:hover {
+  background-color: #c82333;
+}
+
+.editInput {
+  flex: 1;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-right: 10px;
+}
+
+.saveButton {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.saveButton:hover {
+  background-color: #0056b3;
+}
+
+.cancelButton {
+  background-color: #6c757d;
+  margin-left: 5px;
+}
+
+.cancelButton:hover {
+  background-color: #5a6268;
+}

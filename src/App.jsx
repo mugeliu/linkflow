@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
-import "./App.css";
-import TaskList from "./components/TaskList";
-import TaskInput from "./components/TaskInput";
+import TaskList from "./components/TaskList/TaskList";
+import TaskInput from "./components/TaskInput/TaskInput";
+
+import styles from "./App.module.css";
+import "./index.css";
 
 function App() {
   // 用useState来创建一个状态变量tasks，并存在localStorage中
@@ -18,7 +20,7 @@ function App() {
   const handleAddTask = (newTask) => {
     setTasks([
       ...tasks,
-      { id: tasks.length + 1, text: newTask, completed: false },
+      { id: tasks.length + 1, title: newTask, completed: false },
     ]);
   };
 
@@ -44,12 +46,21 @@ function App() {
     );
   };
 
+  const editTask = (id, newTitle) => {
+    setTasks(
+      tasks.map((task) =>
+        task.id === id ? { ...task, title: newTitle } : task
+      )
+    );
+  };
+
   return (
-    <div>
+    <div className={styles.container}>
       <TaskList
         tasks={tasks}
         onDelete={handleDeleteTask}
         onToggle={toggleTask}
+        onEdit={editTask}
       />
       <TaskInput addTask={handleAddTask} />
     </div>
