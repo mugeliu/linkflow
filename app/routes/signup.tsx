@@ -1,7 +1,16 @@
 import { useState } from "react";
-import { json, type ActionFunction } from "@remix-run/node";
-import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
+import { json, type ActionFunction, redirect } from "@remix-run/node";
+import {
+  Form,
+  Link,
+  useActionData,
+  useNavigation,
+  useSubmit,
+} from "@remix-run/react";
 import { motion } from "framer-motion";
+import { validateEmail, checkPasswordStrength } from "~/utils/validation";
+import { authService } from "~/services/auth.server";
+import { createUserSession } from "~/services/session.server";
 
 // 在组件外部添加 socialButtons 定义
 const socialButtons = [
@@ -27,20 +36,78 @@ const socialButtons = [
 
 export const action: ActionFunction = async ({ request }) => {
   const formData = await request.formData();
-  const email = formData.get("email");
-  const password = formData.get("password");
-  const name = formData.get("name");
+  const email = formData.get("email")?.toString();
+  const password = formData.get("password")?.toString();
+  const name = formData.get("name")?.toString();
+  const verifyCode = formData.get("emailVerifyCode")?.toString();
 
-  // TODO: 实现实际的注册逻辑
+  if (!email || !password || !name || !verifyCode) {
+    return json({ error: "请填写所有必填字段" }, { status: 400 });
+  }
+
   try {
-    // 这里添加实际的注册逻辑
-    return json({ success: true });
-  } catch (error) {
-    return json({ error: "注册失败，请稍后重试" }, { status: 400 });
+    // 验证邮箱验证码
+    const isValidCode = await authService.verifyEmailCode(email, verifyCode);
+    if (!isValidCode) {
+      return json({ error: "验证码无效或已过期" }, { status: 400 });
+    }
+
+    // 创建用户
+    const user = await authService.createUser({
+      email,
+      password,
+      name,
+    });
+
+    // 创建会话并重定向到用户主页
+    return createUserSession(user.id, `/${name}`);
+  } catch (error: unknown) {
+    console.error("Signup error:", error);
+
+    // 处理特定的错误类型
+    if (error instanceof Error) {
+      // 处理邮箱已注册的错误
+      if (error.message === "Email already registered") {
+        return json({ error: "该邮箱已被注册" }, { status: 400 });
+      }
+
+      // 处理用户名已存在的错误
+      if (
+        error.message.includes(
+          "Unique constraint failed on the fields: (`name`)"
+        )
+      ) {
+        return json({ error: "该用户名已被使用" }, { status: 400 });
+      }
+    }
+
+    // 处理其他未知错误
+    return json({ error: "注册失败，请稍后重试" }, { status: 500 });
   }
 };
 
+// 修改 loader 函数，处理验证码发送
+export const loader = async ({ request }: { request: Request }) => {
+  const url = new URL(request.url);
+  const email = url.searchParams.get("email");
+
+  if (email) {
+    try {
+      const code = await authService.generateAndSendVerificationCode(email);
+      await authService.createVerificationForEmail(email, code);
+      return json({ success: true });
+    } catch (error) {
+      console.error("Send verification code error:", error);
+      // 开发环境下不返回错误，让流程继续
+      return json({ success: true });
+    }
+  }
+
+  return json({});
+};
+
 export default function Signup() {
+  const submit = useSubmit();
   const [agreeToTerms, setAgreeToTerms] = useState(false);
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -57,24 +124,134 @@ export default function Signup() {
     email: "",
     password: "",
   });
+  const [isCodeVerified, setIsCodeVerified] = useState(false);
 
+  const handleVerifyCodeChange = async (index: number, value: string) => {
+    if (value.match(/^[0-9]$/)) {
+      const newCode = emailVerifyCode.split("");
+      newCode[index] = value;
+      const updatedCode = newCode.join("");
+      setEmailVerifyCode(updatedCode);
+
+      if (updatedCode.length === 6) {
+        const email = (document.getElementById("email") as HTMLInputElement)
+          .value;
+        try {
+          const response = await fetch("/api/verify-code", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email,
+              code: updatedCode,
+              type: "EMAIL_VERIFICATION",
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const data = await response.json();
+
+          if (data.success) {
+            setIsCodeVerified(true);
+            setVerifyCodeError("");
+          } else {
+            setVerifyCodeError("验证码错误，请重新输入");
+            setIsCodeVerified(false);
+            setEmailVerifyCode("");
+            const firstInput = document.querySelector(
+              'input[name="verifyCode0"]'
+            ) as HTMLInputElement;
+            if (firstInput) {
+              firstInput.focus();
+            }
+          }
+        } catch (error) {
+          console.error("Verification error:", error);
+          setVerifyCodeError("验证失败，请重试");
+          setIsCodeVerified(false);
+          setEmailVerifyCode("");
+        }
+      }
+
+      // 自动聚焦下一个输入框
+      if (value && index < 5) {
+        const nextInput = document.querySelector(
+          `input[name="verifyCode${index + 1}"]`
+        ) as HTMLInputElement;
+        if (nextInput) {
+          nextInput.focus();
+        }
+      }
+    }
+  };
+
+  // 添加清除验证码的函数
+  const clearVerifyCode = () => {
+    setEmailVerifyCode("");
+    setIsCodeVerified(false);
+    setVerifyCodeError("");
+    // 聚焦第一个输入框
+    const firstInput = document.querySelector(
+      'input[name="verifyCode0"]'
+    ) as HTMLInputElement;
+    if (firstInput) {
+      firstInput.focus();
+    }
+  };
+
+  // 修改验证码删除处理
+  const handleVerifyCodeKeyDown = (
+    index: number,
+    e: React.KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (e.key === "Backspace") {
+      if (!emailVerifyCode[index]) {
+        // 当前输入框为空，删除前一个输入框的内容
+        if (index > 0) {
+          const newCode = emailVerifyCode.split("");
+          newCode[index - 1] = "";
+          setEmailVerifyCode(newCode.join(""));
+          // 重置验证状态
+          setIsCodeVerified(false);
+          setVerifyCodeError("");
+          const prevInput = document.querySelector(
+            `input[name="verifyCode${index - 1}"]`
+          ) as HTMLInputElement;
+          if (prevInput) {
+            prevInput.focus();
+          }
+        }
+      } else {
+        // 当前输入框有内容，清空当前输入框
+        const newCode = emailVerifyCode.split("");
+        newCode[index] = "";
+        setEmailVerifyCode(newCode.join(""));
+        // 重置验证状态
+        setIsCodeVerified(false);
+        setVerifyCodeError("");
+      }
+    }
+  };
+
+  // 发送验证码时重置状态
   const sendVerifyCode = async () => {
     const email = (document.getElementById("email") as HTMLInputElement).value;
     if (!email) {
-      // 显示邮箱为空的错误提示
       setVerifyCodeError("请输入邮箱地址");
       return;
     }
 
-    // 验证邮箱格式
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!validateEmail(email)) {
       setVerifyCodeError("请输入有效的邮箱地址");
       return;
     }
 
     try {
-      // TODO: 调用发送验证码 API
+      await fetch(`/signup?email=${email}`);
       setCountdown(60);
       const timer = setInterval(() => {
         setCountdown((prev) => {
@@ -85,37 +262,17 @@ export default function Signup() {
           return prev - 1;
         });
       }, 1000);
-      setVerifyCodeError(""); // 清除错误提示
+      // 重置所有验证相关的状态
+      setVerifyCodeError("");
+      setIsCodeVerified(false);
+      setEmailVerifyCode("");
     } catch (error) {
       setVerifyCodeError("发送验证码失败，请稍后重试");
     }
   };
 
-  const checkPasswordStrength = (password: string) => {
-    let score = 0;
-    let message = "";
-
-    if (password.length >= 8) score++;
-    if (password.match(/[A-Z]/)) score++;
-    if (password.match(/[0-9]/)) score++;
-    if (password.match(/[^A-Za-z0-9]/)) score++;
-
-    switch (score) {
-      case 0:
-      case 1:
-        message = "弱";
-        break;
-      case 2:
-        message = "中";
-        break;
-      case 3:
-        message = "强";
-        break;
-      case 4:
-        message = "非常强";
-        break;
-    }
-
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { score, message } = checkPasswordStrength(e.target.value);
     setPasswordStrength({ score, message });
   };
 
@@ -131,20 +288,46 @@ export default function Signup() {
     const password = (document.getElementById("password") as HTMLInputElement)
       .value;
 
-    if (name.length < 2) {
+    if (!name) {
+      errors.name = "请输入用户名";
+    } else if (name.length < 2) {
       errors.name = "用户名至少需要2个字符";
     }
 
-    if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+    if (!email) {
+      errors.email = "请输入邮箱地址";
+    } else if (!validateEmail(email)) {
       errors.email = "请输入有效的邮箱地址";
     }
 
-    if (password.length < 8) {
+    if (!password) {
+      errors.password = "请输入密码";
+    } else if (password.length < 8) {
       errors.password = "密码至少需要8个字符";
     }
 
     setFormErrors(errors);
     return !Object.values(errors).some((error) => error);
+  };
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    if (!validateForm()) {
+      e.preventDefault();
+      return;
+    }
+
+    if (!isCodeVerified) {
+      setVerifyCodeError("请先验证邮箱验证码");
+      e.preventDefault();
+      return;
+    }
+
+    // 添加验证码到表单
+    const verifyCodeInput = document.createElement("input");
+    verifyCodeInput.type = "hidden";
+    verifyCodeInput.name = "emailVerifyCode";
+    verifyCodeInput.value = emailVerifyCode;
+    e.currentTarget.appendChild(verifyCodeInput);
   };
 
   // 添加加载状态组件
@@ -197,15 +380,7 @@ export default function Signup() {
               创建账号
             </h2>
 
-            <Form
-              method="post"
-              className="space-y-6"
-              onSubmit={(e) => {
-                if (!validateForm()) {
-                  e.preventDefault();
-                }
-              }}
-            >
+            <Form method="post" className="space-y-6" onSubmit={handleSubmit}>
               {actionData?.error && (
                 <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-500 text-sm">
                   {actionData.error}
@@ -276,38 +451,26 @@ export default function Signup() {
                     <input
                       key={index}
                       type="text"
+                      name={`verifyCode${index}`}
                       maxLength={1}
                       value={emailVerifyCode[index] || ""}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        if (value.match(/^[0-9]$/)) {
-                          const newCode = emailVerifyCode.split("");
-                          newCode[index] = value;
-                          setEmailVerifyCode(newCode.join(""));
-                          if (value && e.target.nextElementSibling) {
-                            (
-                              e.target.nextElementSibling as HTMLInputElement
-                            ).focus();
-                          }
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (
-                          e.key === "Backspace" &&
-                          !emailVerifyCode[index] &&
-                          e.target.previousElementSibling
-                        ) {
-                          (
-                            e.target.previousElementSibling as HTMLInputElement
-                          ).focus();
-                        }
-                      }}
-                      className="w-12 h-12 text-center bg-gray-700/30 border border-gray-600/50 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-xl"
+                      onChange={(e) =>
+                        handleVerifyCodeChange(index, e.target.value)
+                      }
+                      onKeyDown={(e) => handleVerifyCodeKeyDown(index, e)}
+                      className={`w-12 h-12 text-center ${
+                        isCodeVerified
+                          ? "border-green-500 ring-2 ring-green-500/50"
+                          : "border-gray-600/50"
+                      } bg-gray-700/30 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-xl`}
                     />
                   ))}
                 </div>
                 {verifyCodeError && (
                   <p className="text-sm text-red-500 mt-1">{verifyCodeError}</p>
+                )}
+                {isCodeVerified && (
+                  <p className="text-sm text-green-500 mt-1">✓ 验证码正确</p>
                 )}
               </div>
 
@@ -324,7 +487,7 @@ export default function Signup() {
                     id="password"
                     name="password"
                     required
-                    onChange={(e) => checkPasswordStrength(e.target.value)}
+                    onChange={(e) => handlePasswordChange(e)}
                     className="w-full px-4 py-3 bg-gray-700/30 border border-gray-600/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all placeholder-gray-500"
                     placeholder="至少8个字符"
                   />
@@ -433,7 +596,7 @@ export default function Signup() {
             </div>
             <div className="relative flex justify-center text-sm">
               <span className="px-2 bg-gray-900 text-gray-400">
-                或使用以下方式注册
+                或��用以下方式注册
               </span>
             </div>
           </div>

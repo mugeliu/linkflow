@@ -2,26 +2,67 @@ import { useState } from "react";
 import { json, type ActionFunction } from "@remix-run/node";
 import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
 import { motion } from "framer-motion";
+import { validateEmail } from "~/utils/validation";
+import { authService } from "~/services/auth.server";
+import { createUserSession } from "~/services/session.server";
 
 export const action: ActionFunction = async ({ request }) => {
   const formData = await request.formData();
-  const email = formData.get("email");
-  const password = formData.get("password");
+  const email = formData.get("email")?.toString();
+  const password = formData.get("password")?.toString();
 
-  // TODO: 实现实际的登录逻辑
+  if (!email || !password) {
+    return json({ error: "请填写所有必填字段" }, { status: 400 });
+  }
+
   try {
-    // 这里添加实际的登录验证逻辑
-    return json({ success: true });
+    // 验证用户凭据
+    const user = await authService.verifyCredentials(email, password);
+
+    if (!user) {
+      return json({ error: "邮箱或密码错误" }, { status: 400 });
+    }
+
+    // 创建会话并重定向到用户主页
+    return createUserSession(user.id, `/${user.name}`);
   } catch (error) {
-    return json({ error: "邮箱或密码错误" }, { status: 400 });
+    console.error("Login error:", error);
+    return json({ error: "登录失败，请稍后重试" }, { status: 500 });
   }
 };
 
 export default function Login() {
-  const [rememberMe, setRememberMe] = useState(false);
+  const [formErrors, setFormErrors] = useState({
+    email: "",
+    password: "",
+  });
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
+
+  const validateForm = () => {
+    const errors = {
+      email: "",
+      password: "",
+    };
+
+    const email = (document.getElementById("email") as HTMLInputElement).value;
+    const password = (document.getElementById("password") as HTMLInputElement)
+      .value;
+
+    if (!email) {
+      errors.email = "请输入邮箱地址";
+    } else if (!validateEmail(email)) {
+      errors.email = "请输入有效的邮箱地址";
+    }
+
+    if (!password) {
+      errors.password = "请输入密码";
+    }
+
+    setFormErrors(errors);
+    return !Object.values(errors).some((error) => error);
+  };
 
   // 定义社交登录按钮，添加实际的认证 URL
   const socialButtons = [
@@ -67,9 +108,19 @@ export default function Login() {
           <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-violet-600 to-blue-600 rounded-2xl blur opacity-20"></div>
 
           <div className="relative bg-gray-800/50 backdrop-blur-xl rounded-2xl p-8 shadow-xl border border-gray-700/50">
-            <h2 className="text-2xl font-bold mb-6 text-center">欢迎回来</h2>
+            <h2 className="text-2xl font-bold mb-6 text-center bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">
+              登录账号
+            </h2>
 
-            <Form method="post" className="space-y-6">
+            <Form
+              method="post"
+              className="space-y-6"
+              onSubmit={(e) => {
+                if (!validateForm()) {
+                  e.preventDefault();
+                }
+              }}
+            >
               {actionData?.error && (
                 <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-500 text-sm">
                   {actionData.error}
@@ -91,6 +142,11 @@ export default function Login() {
                   className="w-full px-4 py-3 bg-gray-700/30 border border-gray-600/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all placeholder-gray-500"
                   placeholder="your@email.com"
                 />
+                {formErrors.email && (
+                  <p className="text-sm text-red-500 mt-1">
+                    {formErrors.email}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -106,8 +162,13 @@ export default function Login() {
                   name="password"
                   required
                   className="w-full px-4 py-3 bg-gray-700/30 border border-gray-600/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all placeholder-gray-500"
-                  placeholder="••••••••"
+                  placeholder="您的密码"
                 />
+                {formErrors.password && (
+                  <p className="text-sm text-red-500 mt-1">
+                    {formErrors.password}
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center justify-between">
@@ -115,8 +176,6 @@ export default function Login() {
                   <input
                     type="checkbox"
                     id="remember"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
                     className="w-4 h-4 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
                   />
                   <label
@@ -137,9 +196,16 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-500 rounded-xl font-medium transition-all hover:from-blue-600 hover:to-violet-600 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-500 rounded-xl font-medium transition-all hover:from-blue-600 hover:to-violet-600 transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
               >
-                {isSubmitting ? "登录中..." : "登录"}
+                {isSubmitting ? (
+                  <>
+                    <LoadingSpinner />
+                    <span>登录中...</span>
+                  </>
+                ) : (
+                  "登录"
+                )}
               </button>
             </Form>
 
