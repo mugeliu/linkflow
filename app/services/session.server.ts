@@ -1,47 +1,18 @@
-import { createCookieSessionStorage, redirect } from "@remix-run/node";
+import { createCookieSessionStorage } from "@remix-run/node";
 
-// 会话存储配置
-const sessionStorage = createCookieSessionStorage({
+// 使用环境变量中的密钥，如果不存在则使用默认值
+const sessionSecret = process.env.SESSION_SECRET || "your-secret-key-change-me";
+
+export const sessionStorage = createCookieSessionStorage({
   cookie: {
-    name: "__session",
-    httpOnly: true,
-    path: "/",
+    name: "_session",
     sameSite: "lax",
-    secrets: [process.env.SESSION_SECRET || "default-secret"], // 在生产环境中必须设置
+    path: "/",
+    httpOnly: true,
+    secrets: [sessionSecret],
     secure: process.env.NODE_ENV === "production",
+    maxAge: 60 * 60 * 24 * 30, // 30 days
   },
 });
 
-// 获取会话用户ID
-export async function getUserId(request: Request) {
-  const session = await getSession(request);
-  const userId = session.get("userId");
-  return userId;
-}
-
-// 创建用户会话
-export async function createUserSession(userId: string, redirectTo: string) {
-  const session = await sessionStorage.getSession();
-  session.set("userId", userId);
-  return redirect(redirectTo, {
-    headers: {
-      "Set-Cookie": await sessionStorage.commitSession(session),
-    },
-  });
-}
-
-// 获取会话
-export async function getSession(request: Request) {
-  const cookie = request.headers.get("Cookie");
-  return sessionStorage.getSession(cookie);
-}
-
-// 销毁会话
-export async function logout(request: Request) {
-  const session = await getSession(request);
-  return redirect("/login", {
-    headers: {
-      "Set-Cookie": await sessionStorage.destroySession(session),
-    },
-  });
-}
+export const { getSession, commitSession, destroySession } = sessionStorage;

@@ -1,27 +1,34 @@
 import { json, type ActionFunction } from "@remix-run/node";
-import { authService } from "~/services/auth.server";
-import type { VerificationType } from "~/services/auth.server";
-
-interface VerifyCodePayload {
-  email: string;
-  code: string;
-  type: VerificationType;
-}
+import { verifyEmailCode } from "~/services/auth.server";
+import { AuthorizationError } from "remix-auth";
 
 export const action: ActionFunction = async ({ request }) => {
-  try {
-    const { email, code, type } = (await request.json()) as VerifyCodePayload;
-    console.log("Verifying code:", { email, code, type });
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
 
-    // 传入验证码类型
-    const isValid = await authService.verifyEmailCode(email, code, type);
-    console.log("Verification result:", isValid);
-    return json({ success: isValid });
+  try {
+    const formData = await request.formData();
+    const email = formData.get("email") as string;
+    const code = formData.get("code") as string;
+    const type = (formData.get("type") as string) || "EMAIL_VERIFICATION";
+
+    if (!email || !code) {
+      throw new AuthorizationError("请提供邮箱和验证码");
+    }
+
+    const isValid = await verifyEmailCode(email, code, type);
+
+    if (!isValid) {
+      throw new AuthorizationError("验证码无效或已过期");
+    }
+
+    return json({ success: true });
   } catch (error) {
-    console.error("Verification error:", error);
-    return json({
-      success: false,
-      error: error instanceof Error ? error.message : "验证失败",
-    });
+    console.error("Verify code error:", error);
+    if (error instanceof AuthorizationError) {
+      return json({ error: error.message }, { status: 400 });
+    }
+    return json({ error: "验证失败" }, { status: 500 });
   }
 };

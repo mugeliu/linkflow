@@ -1,5 +1,5 @@
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -8,46 +8,25 @@ generator client {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  name          String    @unique
-  password      String    // 存储加密后的密码
-  avatar        String?   // 头像URL
-  emailVerified Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  provider      String?   // 用于标识是否是第三方登录及来源
-  providerId    String?   // 第三方登录的唯一标识
-  role          String    @default("USER")
-
-  // 关联
-  sessions      Session[]
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String         @unique
+  password      String
+  avatar        String?
+  emailVerified Boolean        @default(false)
+  role          String         @default("USER")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   verifications Verification[]
-
-  @@index([email])
-  @@index([provider, providerId])
-}
-
-model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
 }
 
 model Verification {
   id        String   @id @default(cuid())
   code      String
-  userId    String
-  type      String
+  type      String   @default("EMAIL_VERIFICATION")
   expiresAt DateTime
-  createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([code])
-  @@index([type])
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 } 

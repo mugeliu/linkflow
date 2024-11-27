@@ -1,32 +1,82 @@
 import { useState } from "react";
-import { json, type ActionFunction } from "@remix-run/node";
-import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
+import { json, type ActionFunction, redirect } from "@remix-run/node";
+import {
+  Form,
+  Link,
+  useActionData,
+  useNavigation,
+  useSearchParams,
+} from "@remix-run/react";
 import { motion } from "framer-motion";
 import { validateEmail } from "~/utils/validation";
-import { authService } from "~/services/auth.server";
-import { createUserSession } from "~/services/session.server";
+import { authenticator } from "~/services/auth.server";
+import { AuthorizationError } from "remix-auth";
+
+// 定义社交登录按钮
+const socialButtons = [
+  {
+    name: "GitHub",
+    icon: "/icons/github.svg",
+    bgColor: "hover:bg-[#24292e]",
+    url: "/auth/github",
+  },
+  {
+    name: "Google",
+    icon: "/icons/google.svg",
+    bgColor: "hover:bg-[#4285f4]",
+    url: "/auth/google",
+  },
+  {
+    name: "LinuxDo",
+    icon: "/icons/linuxdo.svg",
+    bgColor: "hover:bg-[#0088cc]",
+    url: "/auth/linuxdo",
+  },
+];
+
+// 加载状态组件 - 移到组件外部
+const LoadingSpinner = () => (
+  <svg
+    className="animate-spin h-5 w-5 text-white"
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+  >
+    <circle
+      className="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+    />
+    <path
+      className="opacity-75"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+    />
+  </svg>
+);
 
 export const action: ActionFunction = async ({ request }) => {
-  const formData = await request.formData();
-  const email = formData.get("email")?.toString();
-  const password = formData.get("password")?.toString();
-
-  if (!email || !password) {
-    return json({ error: "请填写所有必填字段" }, { status: 400 });
-  }
-
   try {
-    // 验证用户凭据
-    const user = await authService.verifyCredentials(email, password);
+    const user = await authenticator.authenticate("user-pass", request, {
+      throwOnError: true,
+      context: { request },
+    });
 
-    if (!user) {
-      return json({ error: "邮箱或密码错误" }, { status: 400 });
+    return redirect(`/${user.name}`);
+  } catch (error) {
+    // 不记录预期的错误
+    if (!(error instanceof AuthorizationError)) {
+      console.error("Login error:", error);
     }
 
-    // 创建会话并重定向到用户主页
-    return createUserSession(user.id, `/${user.name}`);
-  } catch (error) {
-    console.error("Login error:", error);
+    // 返回用户友好的错误信息
+    if (error instanceof AuthorizationError) {
+      return json({ error: error.message }, { status: 400 });
+    }
+
     return json({ error: "登录失败，请稍后重试" }, { status: 500 });
   }
 };
@@ -40,7 +90,13 @@ export default function Login() {
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
 
-  const validateForm = () => {
+  // 使用 useSearchParams 替代 window.location
+  const [searchParams] = useSearchParams();
+  const isNewlyRegistered = searchParams.get("registered") === "true";
+  const isPasswordReset = searchParams.get("reset") === "true";
+
+  const validateForm = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     const errors = {
       email: "",
       password: "",
@@ -61,30 +117,12 @@ export default function Login() {
     }
 
     setFormErrors(errors);
-    return !Object.values(errors).some((error) => error);
-  };
 
-  // 定义社交登录按钮，添加实际的认证 URL
-  const socialButtons = [
-    {
-      name: "GitHub",
-      icon: "/icons/github.svg",
-      bgColor: "hover:bg-[#24292e]",
-      url: "/auth/github",
-    },
-    {
-      name: "Google",
-      icon: "/icons/google.svg",
-      bgColor: "hover:bg-[#4285f4]",
-      url: "/auth/google",
-    },
-    {
-      name: "LinuxDo",
-      icon: "/icons/linuxdo.svg",
-      bgColor: "hover:bg-[#0088cc]",
-      url: "/auth/linuxdo",
-    },
-  ];
+    // 如果没有错误，手动提交表单
+    if (!Object.values(errors).some((error) => error)) {
+      (e.target as HTMLFormElement).submit();
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-600/20 via-gray-900 to-gray-900 text-white flex items-center justify-center p-4">
@@ -112,14 +150,23 @@ export default function Login() {
               登录账号
             </h2>
 
+            {isNewlyRegistered && (
+              <div className="mb-6 p-4 bg-green-500/10 border border-green-500/50 rounded-lg text-green-400 text-sm">
+                注册成功！请使用您的邮箱和密码登录。
+              </div>
+            )}
+
+            {isPasswordReset && (
+              <div className="mb-6 p-4 bg-green-500/10 border border-green-500/50 rounded-lg text-green-400 text-sm">
+                密码重置成功！请使用新密码登录。
+              </div>
+            )}
+
             <Form
               method="post"
               className="space-y-6"
-              onSubmit={(e) => {
-                if (!validateForm()) {
-                  e.preventDefault();
-                }
-              }}
+              onSubmit={validateForm}
+              replace
             >
               {actionData?.error && (
                 <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-500 text-sm">
@@ -196,7 +243,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-500 rounded-xl font-medium transition-all hover:from-blue-600 hover:to-violet-600 transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-500 rounded-xl font-medium transition-all hover:from-blue-600 hover:to-violet-600 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isSubmitting ? (
                   <>
