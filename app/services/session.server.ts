@@ -1,7 +1,9 @@
 import { createCookieSessionStorage } from "@remix-run/node";
 
-// 使用环境变量中的密钥，如果不存在则使用默认值
-const sessionSecret = process.env.SESSION_SECRET || "your-secret-key-change-me";
+// 确保环境变量存在
+if (!process.env.SESSION_SECRET) {
+  throw new Error("SESSION_SECRET must be set");
+}
 
 export const sessionStorage = createCookieSessionStorage({
   cookie: {
@@ -9,10 +11,20 @@ export const sessionStorage = createCookieSessionStorage({
     sameSite: "lax",
     path: "/",
     httpOnly: true,
-    secrets: [sessionSecret],
+    secrets: [process.env.SESSION_SECRET],
     secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 30, // 30 days
+    maxAge: 60 * 60 * 24 * 7, // 7 days
   },
 });
 
-export const { getSession, commitSession, destroySession } = sessionStorage;
+// 辅助函数：获取会话
+export async function getSession(request: Request) {
+  const cookie = request.headers.get("Cookie");
+  return sessionStorage.getSession(cookie);
+}
+
+// 辅助函数：销毁会话
+export async function destroySession(request: Request) {
+  const session = await getSession(request);
+  return sessionStorage.destroySession(session);
+}

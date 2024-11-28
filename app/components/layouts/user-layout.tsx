@@ -6,32 +6,21 @@ import {
   SidebarHeader,
   SidebarFooter,
   SidebarProvider,
-  SidebarTrigger,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
 } from "~/components/ui/sidebar";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Avatar, AvatarImage, AvatarFallback } from "~/components/ui/avatar";
 import { Button } from "~/components/ui/button";
-import { Separator } from "~/components/ui/separator";
 import {
   Bookmark,
   FolderHeart,
   Home,
-  LogOut,
-  Plus,
-  Search,
-  Settings,
-  Star,
-  Tag,
-  ChevronDown,
-  ChevronRight,
   Clock,
   Share2,
+  Star,
+  Tag,
   PanelLeftClose,
   PanelLeftOpen,
-  User,
+  Settings,
   Library,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
@@ -46,26 +35,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
-import type { LucideIcon } from "lucide-react";
+import { SettingsDialog } from "~/components/settings/settings-dialog";
+
+interface LayoutUser {
+  name: string;
+  email: string;
+  avatar?: string | null;
+  id: string;
+  emailVerified: boolean;
+}
 
 interface UserLayoutProps {
   children: React.ReactNode;
-  user: {
-    name: string;
-    email: string;
-    avatar?: string | null;
-  };
+  user: LayoutUser;
 }
 
-// 定义导航菜单
 const navigationMenu = [
   {
     title: "概览",
@@ -107,78 +91,29 @@ const libraryMenu = [
   },
 ];
 
-// 定义菜单项类型
-type UserMenuItem =
-  | {
-      type: "item";
-      title: string;
-      description: string;
-      icon: LucideIcon;
-      href: (username: string) => string;
-    }
-  | {
-      type: "item";
-      title: string;
-      description: string;
-      icon: LucideIcon;
-      action: "logout";
-      variant?: "destructive";
-    }
-  | {
-      type: "separator";
-    };
-
-// 优化用户下拉菜单
-const userDropdownMenu: UserMenuItem[] = [
-  {
-    type: "item",
-    title: "个人资料",
-    description: "查看和编辑您的个人信息",
-    icon: User,
-    href: (username: string) => `/${username}/profile`,
-  },
-  {
-    type: "item",
-    title: "账户设置",
-    description: "管理您的账户和偏好设置",
-    icon: Settings,
-    href: (username: string) => `/${username}/settings`,
-  },
-  {
-    type: "separator",
-  },
-  {
-    type: "item",
-    title: "退出登录",
-    description: "退出当前账户",
-    icon: LogOut,
-    action: "logout",
-    variant: "destructive",
-  },
-];
-
 export function UserLayout({ children, user }: UserLayoutProps) {
-  const [showSearch, setShowSearch] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [showUserDialog, setShowUserDialog] = useState(false);
   const location = useLocation();
 
   const isActiveLink = (href: string) => location.pathname === href;
 
-  // 添加收藏夹展开/收起的动画状态
-  const [libraryAnimation, setLibraryAnimation] = useState("open");
-
   // 处理收藏夹展开/收起
   const handleLibraryToggle = (open: boolean) => {
-    setLibraryAnimation(open ? "open" : "close");
     setIsLibraryOpen(open);
   };
 
-  // 修改折叠按钮点击处理函数
+  // 处理侧边栏折叠
   const handleSidebarToggle = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsSidebarOpen(!isSidebarOpen);
+  };
+
+  // 处理用户设置点击
+  const handleUserClick = () => {
+    setShowUserDialog(true);
   };
 
   return (
@@ -193,7 +128,7 @@ export function UserLayout({ children, user }: UserLayoutProps) {
             )}
           >
             <Sidebar className="w-full border-r border-border/40 flex flex-col">
-              {/* 侧边栏头部 - 修改结构防止事件冒泡 */}
+              {/* 侧边栏头部 */}
               <SidebarHeader className="border-b border-border/40 px-4 py-3">
                 <div className="flex items-center justify-between">
                   {isSidebarOpen && (
@@ -213,7 +148,7 @@ export function UserLayout({ children, user }: UserLayoutProps) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-9 w-9 shrink-0" // 调整按钮大小
+                      className="h-9 w-9 shrink-0"
                       onClick={handleSidebarToggle}
                     >
                       {isSidebarOpen ? (
@@ -277,12 +212,6 @@ export function UserLayout({ children, user }: UserLayoutProps) {
                                   资料库
                                 </span>
                               </span>
-                              <ChevronRight
-                                className={cn(
-                                  "h-5 w-5 transition-transform duration-200", // 调整图标大小
-                                  isLibraryOpen && "rotate-90"
-                                )}
-                              />
                             </button>
                           </CollapsibleTrigger>
 
@@ -333,93 +262,36 @@ export function UserLayout({ children, user }: UserLayoutProps) {
 
               {/* 用户信息（底部） */}
               <div className="border-t border-border/40 p-4">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      className={cn(
-                        "flex w-full items-center gap-4 rounded-lg p-2 hover:bg-accent/50 transition-colors",
-                        !isSidebarOpen && "justify-center"
-                      )}
-                    >
-                      <Avatar className="h-9 w-9 ring-2 ring-border/40">
-                        {user.avatar ? (
-                          <AvatarImage src={user.avatar} alt={user.name} />
-                        ) : (
-                          <AvatarFallback className="bg-gradient-to-br from-blue-500/50 to-violet-500/50 text-white">
-                            {user.name[0].toUpperCase()}
-                          </AvatarFallback>
-                        )}
-                      </Avatar>
-                      {isSidebarOpen && (
-                        <>
-                          <div className="flex-1 overflow-hidden text-left">
-                            <p className="text-sm font-medium leading-none truncate">
-                              {user.name}
-                            </p>
-                            <p className="text-xs text-muted-foreground truncate mt-1">
-                              {user.email}
-                            </p>
-                          </div>
-                          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                        </>
-                      )}
-                    </button>
-                  </DropdownMenuTrigger>
-
-                  <DropdownMenuContent
-                    align={isSidebarOpen ? "end" : "center"}
-                    className="w-[240px]"
-                    sideOffset={8}
-                  >
-                    {userDropdownMenu.map((item, index) => {
-                      if (item.type === "separator") {
-                        return <DropdownMenuSeparator key={index} />;
-                      }
-
-                      const content = (
-                        <div className="flex items-center gap-3 p-2">
-                          <item.icon className="h-5 w-5 shrink-0" />
-                          <div className="space-y-0.5">
-                            <p className="font-medium text-sm">{item.title}</p>
-                            {item.description && (
-                              <p className="text-xs text-muted-foreground line-clamp-1">
-                                {item.description}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      );
-
-                      if ("action" in item && item.action === "logout") {
-                        return (
-                          <form key={index} action="/logout" method="post">
-                            <DropdownMenuItem
-                              asChild
-                              className="text-red-500 focus:text-red-500 cursor-pointer"
-                            >
-                              <button type="submit" className="w-full">
-                                {content}
-                              </button>
-                            </DropdownMenuItem>
-                          </form>
-                        );
-                      }
-
-                      if ("href" in item) {
-                        return (
-                          <DropdownMenuItem key={index} asChild>
-                            <Link
-                              to={item.href(user.name)}
-                              className="cursor-pointer"
-                            >
-                              {content}
-                            </Link>
-                          </DropdownMenuItem>
-                        );
-                      }
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <button
+                  onClick={handleUserClick}
+                  className={cn(
+                    "flex w-full items-center gap-4 rounded-lg p-2 hover:bg-accent/50 transition-colors",
+                    !isSidebarOpen && "justify-center"
+                  )}
+                >
+                  <Avatar className="h-9 w-9 ring-2 ring-border/40">
+                    {user.avatar ? (
+                      <AvatarImage src={user.avatar} alt={user.name} />
+                    ) : (
+                      <AvatarFallback className="bg-gradient-to-br from-blue-500/50 to-violet-500/50 text-white">
+                        {user.name[0].toUpperCase()}
+                      </AvatarFallback>
+                    )}
+                  </Avatar>
+                  {isSidebarOpen && (
+                    <>
+                      <div className="flex-1 overflow-hidden text-left">
+                        <p className="text-sm font-medium leading-none truncate">
+                          {user.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate mt-1">
+                          {user.email}
+                        </p>
+                      </div>
+                      <Settings className="h-5 w-5 text-muted-foreground" />
+                    </>
+                  )}
+                </button>
               </div>
             </Sidebar>
           </div>
@@ -437,6 +309,13 @@ export function UserLayout({ children, user }: UserLayoutProps) {
             </ScrollArea>
           </main>
         </div>
+
+        {/* 用户设置弹框 */}
+        <SettingsDialog
+          open={showUserDialog}
+          onOpenChange={setShowUserDialog}
+          user={user}
+        />
       </TooltipProvider>
     </SidebarProvider>
   );

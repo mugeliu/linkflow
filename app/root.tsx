@@ -1,13 +1,22 @@
+import { useEffect } from "react";
 import {
   Links,
   Meta,
   Outlet,
   Scripts,
   ScrollRestoration,
+  useNavigate,
+  useLoaderData,
 } from "@remix-run/react";
 import type { LinksFunction } from "@remix-run/node";
+import { json, type LoaderFunction } from "@remix-run/node";
+import { authenticator } from "~/services/auth.server";
 
 import "./tailwind.css";
+
+interface LoaderData {
+  user: Awaited<ReturnType<typeof authenticator.isAuthenticated>>;
+}
 
 export const links: LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -40,6 +49,35 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+export const loader: LoaderFunction = async ({ request }) => {
+  const user = await authenticator.isAuthenticated(request);
+
+  return json(
+    { user },
+    {
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+      },
+    }
+  );
+};
+
 export default function App() {
+  const navigate = useNavigate();
+  const { user } = useLoaderData<typeof loader>();
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "logout") {
+        localStorage.clear();
+        sessionStorage.clear();
+        navigate("/login", { replace: true });
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, [navigate]);
+
   return <Outlet />;
 }

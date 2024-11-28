@@ -1,28 +1,17 @@
 import { json, type LoaderFunction } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
-import { getUser } from "~/services/auth.server";
+import { authenticator } from "~/services/auth.server";
 import { PrismaClient } from "@prisma/client";
 import { UserLayout } from "~/components/layouts/user-layout";
 
 const prisma = new PrismaClient();
 
-interface LoaderData {
-  pageUser: {
-    id: string;
-    name: string;
-    email: string;
-    avatar?: string | null;
-    emailVerified: boolean;
-    createdAt: string;
-    role: string;
-  };
-  isOwner: boolean;
-}
-
 export const loader: LoaderFunction = async ({ request, params }) => {
-  const currentUser = await getUser(request);
-  const username = params.username;
+  const currentUser = await authenticator.isAuthenticated(request, {
+    failureRedirect: "/login",
+  });
 
+  const username = params.username;
   if (!username) {
     throw new Response("Not Found", { status: 404 });
   }
@@ -31,8 +20,8 @@ export const loader: LoaderFunction = async ({ request, params }) => {
     where: { name: username },
     select: {
       id: true,
-      name: true,
       email: true,
+      name: true,
       avatar: true,
       emailVerified: true,
       createdAt: true,
@@ -44,19 +33,17 @@ export const loader: LoaderFunction = async ({ request, params }) => {
     throw new Response("User Not Found", { status: 404 });
   }
 
-  const isOwner = currentUser?.id === pageUser.id;
-
-  return json<LoaderData>({
+  return json({
     pageUser: {
       ...pageUser,
       createdAt: pageUser.createdAt.toISOString(),
     },
-    isOwner,
+    isOwner: currentUser.id === pageUser.id,
   });
 };
 
 export default function UserProfile() {
-  const { pageUser, isOwner } = useLoaderData<LoaderData>();
+  const { pageUser } = useLoaderData<typeof loader>();
 
   return (
     <UserLayout user={pageUser}>
