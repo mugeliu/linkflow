@@ -5,7 +5,6 @@ import { motion } from "framer-motion";
 import { validateEmail } from "~/utils/validation";
 import { authenticator } from "~/services/auth.server";
 import { registerUser } from "~/services/auth.server";
-import { AuthorizationError } from "remix-auth";
 
 // 添加 LoadingSpinner 组件
 const LoadingSpinner = () => (
@@ -60,72 +59,60 @@ const inputFields = [
 ] as const;
 
 export const action: ActionFunction = async ({ request }) => {
-  const formData = await request.formData();
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
-  const confirmPassword = formData.get("confirmPassword") as string;
-  const name = formData.get("name") as string;
-
   try {
+    const formData = await request.formData();
+    const email = formData.get("email") as string;
+    const name = formData.get("name") as string;
+    const password = formData.get("password") as string;
+    const confirmPassword = formData.get("confirmPassword") as string;
+
     // 验证表单数据
-    if (
-      !email ||
-      !password ||
-      !confirmPassword ||
-      !name ||
-      typeof email !== "string" ||
-      typeof password !== "string" ||
-      typeof confirmPassword !== "string" ||
-      typeof name !== "string"
-    ) {
-      throw new AuthorizationError("请填写所有必填字段");
+    if (!email || !password || !confirmPassword || !name) {
+      throw new Error("请填写所有必填字段");
     }
 
     if (!validateEmail(email)) {
-      throw new AuthorizationError("请输入有效的邮箱地址");
+      throw new Error("请输入有效的邮箱地址");
     }
 
     if (password.length < 6) {
-      throw new AuthorizationError("密码长度至少为6位");
+      throw new Error("密码长度至少为6位");
     }
 
     if (password !== confirmPassword) {
-      throw new AuthorizationError("两次输入的密码不一致");
+      throw new Error("两次输入的密码不一致");
     }
 
     if (name.length < 2) {
-      throw new AuthorizationError("用户名至少需要2个字符");
+      throw new Error("用户名至少需要2个字符");
     }
 
     // 注册用户
-    const user = await registerUser({ email, password, name });
+    const user = await registerUser({
+      email,
+      password,
+      name,
+    });
 
-    try {
-      // 创建新的表单数据用于登录
-      const loginFormData = new FormData();
-      loginFormData.append("email", email);
-      loginFormData.append("password", password);
+    // 创建新的登录表单数据
+    const loginFormData = new FormData();
+    loginFormData.append("email", email);
+    loginFormData.append("password", password);
 
-      // 创建新的登录请求
-      const loginRequest = new Request(request.url, {
-        method: "POST",
-        body: loginFormData,
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded", // 添加这个头
-        },
-      });
+    // 创建新的请求对象用于登录
+    const loginRequest = new Request(request.url, {
+      method: "POST",
+      body: loginFormData,
+      headers: request.headers,
+    });
 
-      // 使用新的请求对象进行登录
-      await authenticator.authenticate("user-pass", loginRequest);
-      return redirect(`/${user.name}`);
-    } catch (loginError) {
-      // 如果自动登录失败，重定向到登录页面
-      console.error("Auto login failed:", loginError);
-      return redirect("/login?registered=true");
-    }
+    // 使用新的请求对象进行登录
+    return await authenticator.authenticate("user-pass", loginRequest, {
+      successRedirect: `/${user.name}`,
+      failureRedirect: "/login",
+    });
   } catch (error) {
-    console.error("Signup error:", error);
-    if (error instanceof AuthorizationError) {
+    if (error instanceof Error) {
       return json({ error: error.message }, { status: 400 });
     }
     return json({ error: "注册失败，请稍后重试" }, { status: 500 });

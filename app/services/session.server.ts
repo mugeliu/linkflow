@@ -22,7 +22,6 @@ export async function getSession(request: Request) {
   const cookie = request.headers.get("Cookie");
   return sessionStorage.getSession(cookie);
 }
-
 // 辅助函数：销毁会话
 export async function destroySession(request: Request) {
   const session = await getSession(request);

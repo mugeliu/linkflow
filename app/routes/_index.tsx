@@ -1,7 +1,10 @@
-import { type MetaFunction } from "@remix-run/node";
+import { type MetaFunction, type LoaderFunction, json } from "@remix-run/node";
+import { useLoaderData } from "@remix-run/react";
+import { getCurrentUser } from "~/services/auth.server";
 import { Link } from "@remix-run/react";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { Avatar, AvatarImage, AvatarFallback } from "~/components/ui/avatar";
 import type {
   Feature,
   Step,
@@ -21,6 +24,12 @@ export const meta: MetaFunction = () => {
   ];
 };
 
+// 添加 loader 获取用户信息
+export const loader: LoaderFunction = async ({ request }) => {
+  const user = await getCurrentUser(request);
+  return json({ user });
+};
+
 export default function Index() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,6 +37,8 @@ export default function Index() {
   const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly">(
     "monthly"
   );
+
+  const { user } = useLoaderData<typeof loader>();
 
   useEffect(() => {
     const preloadImages = () => {
@@ -177,18 +188,47 @@ export default function Index() {
                     >
                       关于我们
                     </Link>
-                    <Link
-                      to="/login"
-                      className="px-4 py-2 rounded-lg hover:text-blue-400 transition"
-                    >
-                      登录
-                    </Link>
-                    <Link
-                      to="/signup"
-                      className="px-4 py-2 bg-blue-500 rounded-lg hover:bg-blue-600 transition"
-                    >
-                      免费开始
-                    </Link>
+
+                    {user ? (
+                      <Link
+                        to={`/${user.name}`}
+                        className="group relative flex items-center gap-2 px-3 py-1 rounded-full transition duration-200"
+                      >
+                        <div className="relative">
+                          {/* 添加发光效果底层 */}
+                          <div className="absolute -inset-0.5 rounded-full opacity-0 group-hover:opacity-100 blur bg-blue-500/20 transition duration-300" />
+
+                          <Avatar className="relative h-8 w-8 ring-offset-background transition-all duration-300 group-hover:ring-2 group-hover:ring-blue-500/50 group-hover:ring-offset-2">
+                            {user.avatar ? (
+                              <AvatarImage
+                                src={user.avatar}
+                                alt={user.name}
+                                className="transition-transform duration-300 group-hover:scale-105"
+                              />
+                            ) : (
+                              <AvatarFallback className="bg-gradient-to-br from-blue-500/50 to-violet-500/50 text-white text-xl transition-transform duration-300 group-hover:scale-105">
+                                {user.name[0].toUpperCase()}
+                              </AvatarFallback>
+                            )}
+                          </Avatar>
+                        </div>
+                      </Link>
+                    ) : (
+                      <>
+                        <Link
+                          to="/login"
+                          className="px-4 py-2 rounded-lg hover:text-blue-400 transition"
+                        >
+                          登录
+                        </Link>
+                        <Link
+                          to="/signup"
+                          className="px-4 py-2 bg-blue-500 rounded-lg hover:bg-blue-600 transition"
+                        >
+                          免费开始
+                        </Link>
+                      </>
+                    )}
                   </div>
 
                   {/* Mobile Menu Button */}
@@ -890,7 +930,6 @@ export default function Index() {
     </>
   );
 }
-
 const features: Feature[] = [
   {
     icon: "🎯",
@@ -905,13 +944,13 @@ const features: Feature[] = [
   {
     icon: "🤖",
     title: "AI 助手",
-    description: "智能助手帮您管理和发现有价值的网络资源",
+    description: "智能助��帮您管理和发现有价值的网络资源",
   },
 ];
 
 const steps: Step[] = [
   {
-    title: "注册账号",
+    title: "册账号",
     description: "简单几步，快速开始使用",
   },
   {
@@ -931,13 +970,13 @@ const steps: Step[] = [
 const testimonials: Testimonial[] = [
   {
     content:
-      "LinkFlow 彻底改变了我管理网络资源的方式，再也不用担心书签混乱的问题了。",
+      "LinkFlow 彻底改变了我理网络资源的方式，再也不用担心书签混乱的问题了。",
     name: "张明",
     title: "产品经理",
     avatar: "/avatars/user1.svg",
   },
   {
-    content: "智能分类功能太棒了，为我节省了大量整理时间。",
+    content: "智能分类功能棒了，为我节省了大量整理时间。",
     name: "李华",
     title: "自职业者",
     avatar: "/avatars/user2.svg",
@@ -960,7 +999,7 @@ const faqs: FAQ[] = [
   {
     question: "我可以从其他浏览器导入书签吗？",
     answer:
-      "是的，LinkFlow 支持从 Chrome、Firefox、Safari 等主流浏览器一键导入书签。导入程简单快捷，无需手动操作。",
+      "是的，LinkFlow 支持从 Chrome、Firefox、Safari 等主流浏览器一键导入书签。导入程���单快捷，无需手动操作",
   },
   {
     question: "LinkFlow 的 AI 分类功能如何工作？",
@@ -997,7 +1036,7 @@ const pricingPlans: PricingPlan[] = [
       "无限书签存储",
       "高级AI分类功能",
       "全文检索",
-      "多设备同步",
+      "多设备步",
       "优先客服支持",
     ],
     popular: true,

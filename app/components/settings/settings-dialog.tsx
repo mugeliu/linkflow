@@ -14,6 +14,8 @@ interface User {
   email: string;
   avatar?: string | null;
   emailVerified: boolean;
+  role: string;
+  status: string;
 }
 
 interface SettingsDialogProps {
@@ -202,32 +204,45 @@ function ProfileSettings({ user }: ProfileSettingsProps) {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!user.id || countdown > 0) return;
+    if (!user.email || countdown > 0) return;
 
-    // 使用 submit 而不是 fetcher.submit
     const formData = new FormData();
+    formData.append("action", "send");
+    formData.append("email", user.email);
+    formData.append("type", "EMAIL_VERIFICATION");
     formData.append("userId", user.id);
 
-    await fetch("/api/verify-code", {
-      method: "POST",
-      body: formData,
-    });
+    try {
+      const response = await fetch("/api/verification", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
 
-    setCountdown(60);
+      if (data.success) {
+        setCountdown(60);
+      } else {
+        console.error("Send code error:", data.error);
+      }
+    } catch (error) {
+      console.error("Send code error:", error);
+    }
   };
 
   // 验证邮箱
   const handleVerifyEmail = () => {
-    if (!user.id || !verificationCode) return;
+    if (!user.email || !verificationCode) return;
 
     fetcher.submit(
       {
-        userId: user.id,
+        action: "verify",
+        email: user.email,
         code: verificationCode,
+        type: "EMAIL_VERIFICATION",
       },
       {
         method: "post",
-        action: "/api/verify-email",
+        action: "/api/verification",
       }
     );
   };
@@ -406,6 +421,33 @@ function ProfileSettings({ user }: ProfileSettingsProps) {
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* 账号状态显示 */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium">账号状态</label>
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+              {
+                "bg-green-100 text-green-800": user.status === "ACTIVE",
+                "bg-yellow-100 text-yellow-800": user.status === "SUSPENDED",
+              }
+            )}
+          >
+            {(() => {
+              switch (user.status) {
+                case "ACTIVE":
+                  return "正常";
+                case "SUSPENDED":
+                  return "已停用";
+                default:
+                  return "未知状态";
+              }
+            })()}
+          </span>
         </div>
       </div>
     </div>

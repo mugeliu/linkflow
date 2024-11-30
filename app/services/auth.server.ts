@@ -1,34 +1,36 @@
 import { Authenticator } from "remix-auth";
 import { FormStrategy } from "remix-auth-form";
 import { sessionStorage } from "~/services/session.server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "~/services/db.server";
 import bcrypt from "bcryptjs";
-import { emailService } from "./email.server";
+import type { User as PrismaUser } from "@prisma/client";
 
-const prisma = new PrismaClient();
-
-// 定义用户类型
+// 定义我们的用户类型
 export interface User {
   id: string;
   email: string;
   name: string;
-  avatar?: string | null;
+  avatar: string | null;
   emailVerified: boolean;
-  role: string;
-}
-
-// 定义认证错误
-export class AuthError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AuthError";
-  }
+  isAdmin: boolean;
+  status: string;
 }
 
 // 创建认证器实例
-export const authenticator = new Authenticator<User>(sessionStorage, {
-  throwOnError: true,
-});
+export const authenticator = new Authenticator<User>(sessionStorage);
+
+// 将 Prisma 用户类型转换为我们的用户类型
+function convertToUser(prismaUser: PrismaUser): User {
+  return {
+    id: prismaUser.id,
+    email: prismaUser.email,
+    name: prismaUser.name,
+    avatar: prismaUser.avatar,
+    emailVerified: prismaUser.emailVerified,
+    isAdmin: prismaUser.role === "ADMIN",
+    status: prismaUser.status,
+  };
+}
 
 // 配置表单登录策略
 authenticator.use(
@@ -36,45 +38,43 @@ authenticator.use(
     const email = form.get("email");
     const password = form.get("password");
 
-    // 验证表单数据
     if (typeof email !== "string" || typeof password !== "string") {
-      throw new AuthError("请输入邮箱和密码");
+      throw new Error("请输入邮箱和密码");
     }
 
-    try {
-      const user = await prisma.user.findUnique({
-        where: { email: email.toLowerCase() },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          password: true,
-          avatar: true,
-          emailVerified: true,
-          role: true,
-        },
-      });
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
 
-      if (!user || !(await bcrypt.compare(password, user.password))) {
-        throw new AuthError("邮箱或密码错误");
-      }
-
-      const { password: _, ...userWithoutPassword } = user;
-      return userWithoutPassword;
-    } catch (error) {
-      if (error instanceof AuthError) {
-        throw error;
-      }
-      throw new AuthError("登录失败，请稍后重试");
+    if (!user) {
+      throw new Error("用户不存在");
     }
+
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      throw new Error("密码错误");
+    }
+
+    if (user.status !== "ACTIVE") {
+      throw new Error("账号已被禁用");
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      avatar: user.avatar,
+      emailVerified: user.emailVerified,
+      isAdmin: user.role === "ADMIN",
+      status: user.status,
+    };
   }),
   "user-pass"
 );
 
 // 辅助函数：获取当前用户
 export async function getCurrentUser(request: Request) {
-  const user = await authenticator.isAuthenticated(request);
-  return user;
+  return await authenticator.isAuthenticated(request);
 }
 
 // 辅助函数：要求用户登录
@@ -89,70 +89,49 @@ export async function requireUser(request: Request) {
 export async function requireAdmin(request: Request) {
   const user = await requireUser(request);
 
-  if (user.role !== "admin") {
+  if (!user.isAdmin) {
     throw new Response("Forbidden", { status: 403 });
   }
 
   return user;
 }
 
-// 生成验证码
-function generateVerificationCode(): string {
-  return Math.random().toString().slice(2, 8);
-}
+// 辅助函数：注册新用户
+export async function registerUser(data: {
+  email: string;
+  password: string;
+  name: string;
+}) {
+  // 检查邮箱是否已存在
+  const existingUserByEmail = await prisma.user.findUnique({
+    where: { email: data.email.toLowerCase() },
+  });
 
-// 发送验证码
-export async function sendVerificationCode(userId: string): Promise<void> {
-  const code = generateVerificationCode();
+  if (existingUserByEmail) {
+    throw new Error("该邮箱已被注册");
+  }
 
-  // 存储验证码到数据库
-  await prisma.verification.create({
+  // 检查用户名是否已存在
+  const existingUserByName = await prisma.user.findUnique({
+    where: { name: data.name },
+  });
+
+  if (existingUserByName) {
+    throw new Error("该用户名已被使用");
+  }
+
+  // 创建新用户
+  const hashedPassword = await bcrypt.hash(data.password, 10);
+
+  const user = await prisma.user.create({
     data: {
-      userId,
-      code,
-      type: "EMAIL",
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      email: data.email.toLowerCase(),
+      name: data.name,
+      password: hashedPassword,
+      role: "USER",
+      emailVerified: false,
     },
   });
 
-  // 获取用户邮箱
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { email: true },
-  });
-
-  if (!user) throw new Error("User not found");
-
-  await emailService.sendVerificationCode(user.email, code);
-}
-
-// 验证邮箱验证码
-export async function verifyEmailCode(
-  userId: string,
-  code: string
-): Promise<boolean> {
-  // 查找并验证验证码
-  const verification = await prisma.verification.findFirst({
-    where: {
-      userId,
-      code,
-      type: "EMAIL",
-      expiresAt: { gt: new Date() },
-    },
-  });
-
-  if (!verification) return false;
-
-  // 验证成功，更新用户状态并删除验证码
-  await Promise.all([
-    prisma.user.update({
-      where: { id: userId },
-      data: { emailVerified: true },
-    }),
-    prisma.verification.delete({
-      where: { id: verification.id },
-    }),
-  ]);
-
-  return true;
+  return convertToUser(user);
 }

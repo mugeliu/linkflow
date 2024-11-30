@@ -7,6 +7,36 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model Collection {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  color       String?
+  icon        String?
+  createdAt   DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamp(6)
+
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookmarks   Bookmark[]
+
+  @@index([userId])
+}
+
+model Tag {
+  id        String    @id @default(cuid())
+  name      String
+  color     String?
+  createdAt DateTime  @default(now()) @db.Timestamp(6)
+
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookmarks BookmarkTag[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
 model User {
   id            String         @id @default(cuid())
   email         String         @unique
@@ -15,18 +45,80 @@ model User {
   avatar        String?
   emailVerified Boolean        @default(false)
   role          String         @default("USER")
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  verifications Verification[]
+  status        String         @default("ACTIVE")
+  createdAt     DateTime       @default(now()) @db.Timestamp(6)
+  updatedAt     DateTime       @updatedAt @db.Timestamp(6)
+
+  verifications   Verification[]
+  bookmarks       Bookmark[]
+  collections     Collection[]
+  tags            Tag[]
+  starredBookmarks StarredBookmark[]
+
+  @@index([email])
+  @@index([name])
+  @@index([role])
+  @@index([status])
 }
 
 model Verification {
   id        String   @id @default(cuid())
   code      String
   type      String   @default("EMAIL_VERIFICATION")
-  expiresAt DateTime
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @db.Timestamp(6)
   userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @db.Timestamp(6)
+  updatedAt DateTime @updatedAt @db.Timestamp(6)
+
+  @@index([userId])
+  @@index([code])
+}
+
+model Bookmark {
+  id          String    @id @default(cuid())
+  url         String
+  title       String
+  description String?
+  icon        String?
+  image       String?
+  createdAt   DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamp(6)
+
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  collectionId String?
+  collection   Collection? @relation(fields: [collectionId], references: [id])
+
+  tags        BookmarkTag[]
+  starredBy   StarredBookmark[]
+
+  @@index([userId])
+  @@index([collectionId])
+  @@index([url])
+}
+
+model BookmarkTag {
+  bookmarkId  String
+  bookmark    Bookmark  @relation(fields: [bookmarkId], references: [id], onDelete: Cascade)
+  tagId       String
+  tag         Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now()) @db.Timestamp(6)
+
+  @@id([bookmarkId, tagId])
+  @@index([bookmarkId])
+  @@index([tagId])
+}
+
+model StarredBookmark {
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookmarkId  String
+  bookmark    Bookmark  @relation(fields: [bookmarkId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now()) @db.Timestamp(6)
+
+  @@id([userId, bookmarkId])
+  @@index([userId])
+  @@index([bookmarkId])
 } 

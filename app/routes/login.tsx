@@ -15,7 +15,7 @@ import {
 import { motion } from "framer-motion";
 import { validateEmail } from "~/utils/validation";
 import { authenticator } from "~/services/auth.server";
-import { sessionStorage } from "~/services/session.server";
+import { getSession, sessionStorage } from "~/services/session.server";
 
 // 定义 action 的返回数据类型
 interface ActionData {
@@ -48,7 +48,7 @@ const LoadingSpinner = () => (
 
 // 处理已登录用户的重定向
 export const loader: LoaderFunction = async ({ request }) => {
-  // 获取用户信息
+  // 检查用户是否已登录
   const user = await authenticator.isAuthenticated(request);
 
   // 如果已登录，重定向到用户主页
@@ -56,27 +56,26 @@ export const loader: LoaderFunction = async ({ request }) => {
     return redirect(`/${user.name}`);
   }
 
-  // 未登录用户可以访问登录页
   return null;
 };
 
 // 处理登录表单提交
 export const action: ActionFunction = async ({ request }) => {
   try {
-    // 1. 克隆请求以获取表单数据
+    // 1. 获取重定向地址
     const formData = await request.clone().formData();
     const redirectTo = formData.get("redirectTo")?.toString();
 
-    // 2. 使用原始请求进行认证，并获取会话
-    const user = await authenticator.authenticate("user-pass", request);
-    const session = await sessionStorage.getSession(
-      request.headers.get("Cookie")
-    );
+    // 2. 获取会话
+    const session = await getSession(request);
 
-    // 3. 设置用户信息到会话
+    // 3. 进行认证
+    const user = await authenticator.authenticate("user-pass", request);
+
+    // 4. 设置用户信息到会话
     session.set(authenticator.sessionKey, user);
 
-    // 4. 返回重定向响应，并设置会话 cookie
+    // 5. 返回重定向响应
     return redirect(redirectTo || `/${user.name}`, {
       headers: {
         "Set-Cookie": await sessionStorage.commitSession(session),
@@ -84,9 +83,9 @@ export const action: ActionFunction = async ({ request }) => {
     });
   } catch (error) {
     if (error instanceof Error) {
-      return json<ActionData>({ error: error.message }, { status: 400 });
+      return json({ error: error.message }, { status: 400 });
     }
-    return json<ActionData>({ error: "登录失败，请稍后重试" }, { status: 500 });
+    return json({ error: "登录失败，请稍后重试" }, { status: 500 });
   }
 };
 
@@ -203,14 +202,24 @@ export default function Login() {
               </button>
             </Form>
 
-            <div className="mt-6 text-center">
-              <span className="text-gray-400">还没有账号？</span>
-              <Link
-                to="/signup"
-                className="ml-2 text-blue-400 hover:text-blue-300"
-              >
-                立即注册
-              </Link>
+            <div className="mt-6 text-center space-y-2">
+              <div>
+                <span className="text-gray-400">还没有账号？</span>
+                <Link
+                  to="/signup"
+                  className="ml-2 text-blue-400 hover:text-blue-300"
+                >
+                  立即注册
+                </Link>
+              </div>
+              <div>
+                <Link
+                  to="/forgot-password"
+                  className="text-sm text-gray-400 hover:text-blue-300"
+                >
+                  忘记密码？
+                </Link>
+              </div>
             </div>
           </div>
         </div>

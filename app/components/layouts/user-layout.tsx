@@ -38,11 +38,13 @@ import {
 import { SettingsDialog } from "~/components/settings/settings-dialog";
 
 interface LayoutUser {
+  id: string;
   name: string;
   email: string;
   avatar?: string | null;
-  id: string;
   emailVerified: boolean;
+  role: string;
+  status: string;
 }
 
 interface UserLayoutProps {

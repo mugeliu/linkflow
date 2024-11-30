@@ -9,7 +9,7 @@ import {
   useLoaderData,
 } from "@remix-run/react";
 import type { LinksFunction } from "@remix-run/node";
-import { json, type LoaderFunction } from "@remix-run/node";
+import { json, type LoaderFunction, redirect } from "@remix-run/node";
 import { authenticator } from "~/services/auth.server";
 
 import "./tailwind.css";
@@ -51,6 +51,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export const loader: LoaderFunction = async ({ request }) => {
   const user = await authenticator.isAuthenticated(request);
+  const url = new URL(request.url);
+
+  // 如果用户未登录且不是公开页面，重定向到登录页
+  if (
+    !user &&
+    !url.pathname.startsWith("/login") &&
+    !url.pathname.startsWith("/signup") &&
+    url.pathname !== "/" && // 允许访问首页
+    !url.pathname.startsWith("/forgot-password") // 允许访问忘记密码页面
+  ) {
+    throw redirect(`/login?redirectTo=${url.pathname}`);
+  }
 
   return json(
     { user },
@@ -64,7 +76,6 @@ export const loader: LoaderFunction = async ({ request }) => {
 
 export default function App() {
   const navigate = useNavigate();
-  const { user } = useLoaderData<typeof loader>();
 
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {

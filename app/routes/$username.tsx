@@ -26,6 +26,7 @@ export const loader: LoaderFunction = async ({ request, params }) => {
       emailVerified: true,
       createdAt: true,
       role: true,
+      status: true,
     },
   });
 

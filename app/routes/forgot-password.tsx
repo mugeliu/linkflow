@@ -3,14 +3,13 @@ import { json, redirect, type ActionFunction } from "@remix-run/node";
 import { Form, Link, useActionData, useNavigation } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { validateEmail } from "~/utils/validation";
-import { AuthorizationError } from "remix-auth";
+import { prisma } from "~/services/db.server";
+import bcrypt from "bcryptjs";
 import {
-  generateAndSendVerificationCode,
-  createVerificationForEmail,
-  resetPassword,
-  verifyEmailCode,
-} from "~/services/auth.server";
-
+  verificationService,
+  type SendVerificationResult,
+  type VerifyCodeResult,
+} from "~/services/verification.server";
 // 简化为两个步骤
 enum ResetStep {
   EMAIL = "email",
@@ -26,12 +25,29 @@ export const action: ActionFunction = async ({ request }) => {
     switch (step) {
       case ResetStep.EMAIL: {
         if (!email || !validateEmail(email)) {
-          throw new AuthorizationError("请输入有效的邮箱地址");
+          throw new Error("请输入有效的邮箱地址");
         }
 
-        // 生成并发送验证码
-        const code = await generateAndSendVerificationCode(email);
-        await createVerificationForEmail(email, code, "PASSWORD_RESET");
+        // 检查邮箱是否存在
+        const user = await prisma.user.findUnique({
+          where: { email: email.toLowerCase() },
+        });
+
+        if (!user) {
+          throw new Error("该邮箱未注册");
+        }
+
+        // 直接使用 verificationService
+        const result: SendVerificationResult =
+          await verificationService.sendVerificationCode({
+            email,
+            type: "PASSWORD_RESET",
+            userId: user.id,
+          });
+
+        if (!result.success) {
+          throw new Error(result.error || "发送验证码失败");
+        }
 
         return json({ success: true, email });
       }
@@ -42,36 +58,46 @@ export const action: ActionFunction = async ({ request }) => {
         const confirmPassword = formData.get("confirmPassword") as string;
 
         if (!code || code.length !== 6) {
-          throw new AuthorizationError("请输入6位验证码");
+          throw new Error("请输入6位验证码");
         }
 
         if (!password || password.length < 6) {
-          throw new AuthorizationError("密码长度至少为6位");
+          throw new Error("密码长度至少为6位");
         }
 
         if (password !== confirmPassword) {
-          throw new AuthorizationError("两次输入的密码不一致");
+          throw new Error("两次输入的密码不一致");
         }
 
-        try {
-          await resetPassword(email, code, password);
-          return redirect("/login?reset=true");
-        } catch (error) {
-          if (error instanceof AuthorizationError) {
-            return json({ error: error.message }, { status: 400 });
-          }
-          return json({ error: "重置密码失败，请稍后重试" }, { status: 500 });
+        // 直接使用 verificationService 验证验证码
+        const verifyResult: VerifyCodeResult =
+          await verificationService.verifyCode({
+            email,
+            code,
+            type: "PASSWORD_RESET",
+          });
+
+        if (!verifyResult.success) {
+          throw new Error(verifyResult.error || "验证码验证失败");
         }
+
+        // 验证成功后更新密码
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await prisma.user.update({
+          where: { email },
+          data: { password: hashedPassword },
+        });
+
+        return redirect("/login?reset=true");
       }
 
       default:
         return json({ error: "无效的操作" }, { status: 400 });
     }
   } catch (error) {
-    if (error instanceof AuthorizationError) {
+    if (error instanceof Error) {
       return json({ error: error.message }, { status: 400 });
     }
-    console.error("Password reset error:", error);
     return json({ error: "操作失败，请稍后重试" }, { status: 500 });
   }
 };
