@@ -1,3 +1,10 @@
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+}
+
 export interface Feature {
   icon: string;
   title: string;
@@ -35,11 +42,4 @@ export interface LazyImageProps {
   src: string;
   alt: string;
   className?: string;
-}
-
-export interface SocialButton {
-  name: string;
-  icon: string;
-  bgColor: string;
-  url: string;
 }

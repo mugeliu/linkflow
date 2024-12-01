@@ -121,43 +121,55 @@ export function UserLayout({ children, user }: UserLayoutProps) {
   return (
     <SidebarProvider>
       <TooltipProvider delayDuration={0}>
-        <div className="flex h-screen bg-background">
+        <div className="flex w-full min-h-svh">
+          {/* 侧边栏 */}
           <div
             className={cn(
-              "fixed inset-y-0 z-40 flex transition-all duration-300",
+              "fixed inset-y-0 left-0 z-40 flex transition-all duration-300 ease-in-out",
               isSidebarOpen ? "w-64" : "w-16",
-              "bg-background/80 backdrop-blur-sm"
+              "bg-background/80 backdrop-blur-sm border-r border-border/10"
             )}
           >
             <Sidebar className="w-full border-r border-border/40 flex flex-col">
               {/* 侧边栏头部 */}
               <SidebarHeader className="border-b border-border/40 px-4 py-3">
                 <div className="flex items-center justify-between">
-                  {isSidebarOpen && (
+                  {/* Logo 添加淡入淡出效果 */}
+                  <div
+                    className={cn(
+                      "transition-all duration-300 ease-in-out",
+                      isSidebarOpen
+                        ? "opacity-100"
+                        : "opacity-0 w-0 overflow-hidden"
+                    )}
+                  >
                     <Link
                       to="/"
                       className="text-xl font-bold bg-gradient-to-r from-blue-400 via-violet-400 to-blue-400 bg-clip-text text-transparent hover:opacity-80 transition-all"
                     >
                       LinkFlow
                     </Link>
-                  )}
+                  </div>
                   <div
                     className={cn(
-                      "flex items-center",
+                      "flex items-center transition-all duration-300 ease-in-out",
                       !isSidebarOpen && "w-full justify-center"
                     )}
                   >
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-9 w-9 shrink-0"
+                      className="h-9 w-9 shrink-0 transition-transform duration-300 ease-in-out"
                       onClick={handleSidebarToggle}
                     >
-                      {isSidebarOpen ? (
+                      <div
+                        className={cn(
+                          "transition-transform duration-300 ease-in-out",
+                          !isSidebarOpen && "rotate-180"
+                        )}
+                      >
                         <PanelLeftClose className="h-5 w-5" />
-                      ) : (
-                        <PanelLeftOpen className="h-5 w-5" />
-                      )}
+                      </div>
                     </Button>
                   </div>
                 </div>
@@ -167,7 +179,10 @@ export function UserLayout({ children, user }: UserLayoutProps) {
               <SidebarContent className="flex-1">
                 <ScrollArea className="h-full">
                   <div
-                    className={cn("space-y-6", isSidebarOpen ? "p-4" : "p-2")}
+                    className={cn(
+                      "space-y-6 transition-all duration-300 ease-in-out",
+                      isSidebarOpen ? "p-4" : "p-2"
+                    )}
                   >
                     {/* 主导航菜单 */}
                     <nav className="space-y-1">
@@ -262,16 +277,18 @@ export function UserLayout({ children, user }: UserLayoutProps) {
                 </ScrollArea>
               </SidebarContent>
 
-              {/* 用户信息（底部） */}
+              {/* 用户信息（底部） - 添加内容过渡效果 */}
               <div className="border-t border-border/40 p-4">
                 <button
                   onClick={handleUserClick}
                   className={cn(
-                    "flex w-full items-center gap-4 rounded-lg p-2 hover:bg-accent/50 transition-colors",
+                    "flex w-full items-center gap-4 rounded-lg p-2",
+                    "hover:bg-accent/50 active:bg-accent/70 transition-all duration-300 ease-in-out",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     !isSidebarOpen && "justify-center"
                   )}
                 >
-                  <Avatar className="h-9 w-9 ring-2 ring-border/40">
+                  <Avatar className="h-9 w-9 ring-2 ring-border/40 transition-all duration-300 ease-in-out">
                     {user.avatar ? (
                       <AvatarImage src={user.avatar} alt={user.name} />
                     ) : (
@@ -280,44 +297,52 @@ export function UserLayout({ children, user }: UserLayoutProps) {
                       </AvatarFallback>
                     )}
                   </Avatar>
-                  {isSidebarOpen && (
-                    <>
-                      <div className="flex-1 overflow-hidden text-left">
+                  {/* 用户信息淡入淡出效果 */}
+                  <div
+                    className={cn(
+                      "flex-1 overflow-hidden transition-all duration-300 ease-in-out",
+                      isSidebarOpen ? "opacity-100 w-auto" : "opacity-0 w-0"
+                    )}
+                  >
+                    {isSidebarOpen && (
+                      <>
                         <p className="text-sm font-medium leading-none truncate">
                           {user.name}
                         </p>
                         <p className="text-xs text-muted-foreground truncate mt-1">
                           {user.email}
                         </p>
-                      </div>
-                      <Settings className="h-5 w-5 text-muted-foreground" />
-                    </>
+                      </>
+                    )}
+                  </div>
+                  {isSidebarOpen && (
+                    <Settings className="h-5 w-5 text-muted-foreground transition-opacity duration-300 ease-in-out" />
                   )}
                 </button>
               </div>
             </Sidebar>
           </div>
 
-          {/* 主内容区域 */}
-          <main
+          {/* 主内容区域 - 添加平滑过渡 */}
+          <div
             className={cn(
-              "flex-1 overflow-hidden transition-all duration-300",
-              "bg-gradient-to-br from-background via-background to-background/80",
+              "flex-1 relative transition-all duration-300 ease-in-out",
               isSidebarOpen ? "ml-64" : "ml-16"
             )}
           >
-            <ScrollArea className="h-full">
-              <div className="container max-w-6xl p-6">{children}</div>
-            </ScrollArea>
-          </main>
-        </div>
+            <main className="absolute inset-0 bg-gradient-to-br from-background via-background to-background/80">
+              <ScrollArea className="h-full">
+                <div className="p-6 min-h-[calc(100vh-3rem)]">{children}</div>
+              </ScrollArea>
+            </main>
+          </div>
 
-        {/* 用户设置弹框 */}
-        <SettingsDialog
-          open={showUserDialog}
-          onOpenChange={setShowUserDialog}
-          user={user}
-        />
+          <SettingsDialog
+            open={showUserDialog}
+            onOpenChange={setShowUserDialog}
+            user={user}
+          />
+        </div>
       </TooltipProvider>
     </SidebarProvider>
   );

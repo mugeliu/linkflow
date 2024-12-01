@@ -12,7 +12,7 @@ import type {
   FAQ,
   PricingPlan,
   LazyImageProps,
-} from "~/types";
+} from "~/types/index";
 
 export const meta: MetaFunction = () => {
   return [
@@ -930,6 +930,7 @@ export default function Index() {
     </>
   );
 }
+
 const features: Feature[] = [
   {
     icon: "🎯",

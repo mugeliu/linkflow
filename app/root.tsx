@@ -6,17 +6,13 @@ import {
   Scripts,
   ScrollRestoration,
   useNavigate,
-  useLoaderData,
 } from "@remix-run/react";
 import type { LinksFunction } from "@remix-run/node";
 import { json, type LoaderFunction, redirect } from "@remix-run/node";
 import { authenticator } from "~/services/auth.server";
 
 import "./tailwind.css";
-
-interface LoaderData {
-  user: Awaited<ReturnType<typeof authenticator.isAuthenticated>>;
-}
+import { Toaster } from "~/components/ui/toaster";
 
 export const links: LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -90,5 +86,10 @@ export default function App() {
     return () => window.removeEventListener("storage", handleStorageChange);
   }, [navigate]);
 
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      <Toaster />
+    </>
+  );
 }
