@@ -8,29 +8,46 @@ generator client {
 }
 
 model Collection {
+  /// 收藏夹唯一标识符
   id          String    @id @default(cuid())
+  /// 收藏夹名称
   name        String
+  /// 收藏夹描述信息
   description String?
+  /// 收藏夹的主题颜色
   color       String?
+  /// 收藏夹的图标
   icon        String?
+  /// 收藏夹创建的时间戳
   createdAt   DateTime  @default(now()) @db.Timestamp(6)
+  /// 收藏夹最后更新的时间戳
   updatedAt   DateTime  @updatedAt @db.Timestamp(6)
 
+  /// 收藏夹所属用户的 ID
   userId      String
+  /// 关联到所属用户
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 收藏夹中的所有书签
   bookmarks   Bookmark[]
 
   @@index([userId])
 }
 
 model Tag {
+  /// 标签唯一标识符
   id        String    @id @default(cuid())
+  /// 标签名称
   name      String
+  /// 标签的显示颜色
   color     String?
+  /// 标签创建的时间戳
   createdAt DateTime  @default(now()) @db.Timestamp(6)
 
+  /// 标签所属用户的 ID
   userId    String
+  /// 关联到所属用户
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 使用此标签的所有书签
   bookmarks BookmarkTag[]
 
   @@unique([userId, name])
@@ -38,21 +55,36 @@ model Tag {
 }
 
 model User {
+  /// 用户唯一标识符，自动生成的 cuid
   id            String         @id @default(cuid())
+  /// 用户邮箱，用于登录和接收通知
   email         String         @unique
+  /// 用户名，用于显示和访问个人主页
   name          String         @unique
+  /// 用户密码的哈希值
   password      String
+  /// 用户头像的 URL 地址
   avatar        String?
+  /// 邮箱是否已验证的标志
   emailVerified Boolean        @default(false)
+  /// 用户角色：USER-普通用户，ADMIN-管理员
   role          String         @default("USER")
+  /// 账号状态：ACTIVE-正常，SUSPENDED-已停用
   status        String         @default("ACTIVE")
+  /// 账号创建的时间戳
   createdAt     DateTime       @default(now()) @db.Timestamp(6)
+  /// 账号信息最后更新的时间戳
   updatedAt     DateTime       @updatedAt @db.Timestamp(6)
 
+  /// 用户的验证记录，用于邮箱验证等
   verifications   Verification[]
+  /// 用户创建的所有书签
   bookmarks       Bookmark[]
+  /// 用户创建的所有收藏夹
   collections     Collection[]
+  /// 用户创建的所有标签
   tags            Tag[]
+  /// 用户收藏的其他用户的书签
   starredBookmarks StarredBookmark[]
 
   @@index([email])
@@ -62,13 +94,22 @@ model User {
 }
 
 model Verification {
+  /// 验证记录唯一标识符
   id        String   @id @default(cuid())
+  /// 验证码
   code      String
-  type      String   @default("EMAIL_VERIFICATION")
-  expiresAt DateTime @db.Timestamp(6)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 验证类型（如：邮箱验证、重置密码等）
+  type      String
+  /// 验证记录创建的时间戳
   createdAt DateTime @default(now()) @db.Timestamp(6)
+  /// 验证码过期时间
+  expiresAt DateTime @db.Timestamp(6)
+
+  /// 验证关联用户的 ID
+  userId    String
+  /// 关联到用户
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 验证记录最后更新的时间戳
   updatedAt DateTime @updatedAt @db.Timestamp(6)
 
   @@index([userId])
@@ -76,22 +117,36 @@ model Verification {
 }
 
 model Bookmark {
+  /// 书签唯一标识符
   id          String    @id @default(cuid())
+  /// 书签的网页地址
   url         String
+  /// 书签的显示标题
   title       String
+  /// 书签的描述信息
   description String?
+  /// 网站的图标 URL
   icon        String?
+  /// 网站的预览图 URL
   image       String?
+  /// 书签创建的时间戳
   createdAt   DateTime  @default(now()) @db.Timestamp(6)
+  /// 书签最后更新的时间戳
   updatedAt   DateTime  @updatedAt @db.Timestamp(6)
 
+  /// 书签所属用户的 ID
   userId      String
+  /// 关联到所属用户
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  /// 书签所属收藏夹的 ID
   collectionId String?
+  /// 关联到所属收藏夹
   collection   Collection? @relation(fields: [collectionId], references: [id])
 
+  /// 书签关联的标签
   tags        BookmarkTag[]
+  /// 收藏此书签的用户记录
   starredBy   StarredBookmark[]
 
   @@index([userId])
@@ -100,10 +155,15 @@ model Bookmark {
 }
 
 model BookmarkTag {
+  /// 关联的书签 ID
   bookmarkId  String
+  /// 关联到书签
   bookmark    Bookmark  @relation(fields: [bookmarkId], references: [id], onDelete: Cascade)
+  /// 关联的标签 ID
   tagId       String
+  /// 关联到标签
   tag         Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  /// 关联创建的时间戳
   createdAt   DateTime  @default(now()) @db.Timestamp(6)
 
   @@id([bookmarkId, tagId])
@@ -112,10 +172,15 @@ model BookmarkTag {
 }
 
 model StarredBookmark {
+  /// 收藏用户的 ID
   userId      String
+  /// 关联到收藏用户
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 被收藏的书签 ID
   bookmarkId  String
+  /// 关联到被收藏的书签
   bookmark    Bookmark  @relation(fields: [bookmarkId], references: [id], onDelete: Cascade)
+  /// 收藏创建的时间戳
   createdAt   DateTime  @default(now()) @db.Timestamp(6)
 
   @@id([userId, bookmarkId])
