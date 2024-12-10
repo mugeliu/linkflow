@@ -1,349 +1,212 @@
-import { useState } from "react";
-import { Link, useLocation } from "@remix-run/react";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarFooter,
-  SidebarProvider,
-} from "~/components/ui/sidebar";
-import { ScrollArea } from "~/components/ui/scroll-area";
-import { Avatar, AvatarImage, AvatarFallback } from "~/components/ui/avatar";
-import { Button } from "~/components/ui/button";
-import {
-  Bookmark,
-  FolderHeart,
-  Home,
-  Clock,
-  Share2,
-  Star,
-  Tag,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Settings,
-  Library,
-} from "lucide-react";
-import { cn } from "~/lib/utils";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "~/components/ui/collapsible";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "~/components/ui/tooltip";
-import { SettingsDialog } from "~/components/settings/settings-dialog";
+  Outlet,
+  useLoaderData,
+  useRouteError,
+  isRouteErrorResponse,
+  useNavigation,
+} from "@remix-run/react";
+import { json, type LoaderFunction, redirect } from "@remix-run/node";
+import { UserLayout } from "~/components/layouts/user-layout";
+import { prisma } from "~/services/db.server";
+import { authenticator } from "~/services/auth.server";
+import { Loader2 } from "lucide-react";
 
-interface LayoutUser {
-  id: string;
-  name: string;
-  email: string;
-  avatar?: string | null;
-  emailVerified: boolean;
-  role: string;
-  status: string;
+// 用户状态枚举
+const USER_STATUS = {
+  ACTIVE: "ACTIVE",
+  SUSPENDED: "SUSPENDED",
+} as const;
+
+// 用户角色枚举
+const USER_ROLE = {
+  USER: "USER",
+  ADMIN: "ADMIN",
+} as const;
+
+export interface LoaderData {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    emailVerified: boolean;
+    avatar: string | null;
+    role: (typeof USER_ROLE)[keyof typeof USER_ROLE];
+    status: (typeof USER_STATUS)[keyof typeof USER_STATUS];
+    createdAt: string;
+    updatedAt: string;
+    _count?: {
+      bookmarks?: number;
+      collections?: number;
+      tags?: number;
+      starredBookmarks?: number;
+    };
+  };
+  isOwner: boolean;
 }
 
-interface UserLayoutProps {
-  children: React.ReactNode;
-  user: LayoutUser;
+// 添加类型守卫函数
+function isValidUserRole(
+  role: string
+): role is (typeof USER_ROLE)[keyof typeof USER_ROLE] {
+  return Object.values(USER_ROLE).includes(role as any);
 }
 
-const navigationMenu = [
-  {
-    title: "概览",
-    icon: Home,
-    href: (username: string) => `/${username}`,
-  },
-  {
-    title: "最近",
-    icon: Clock,
-    href: (username: string) => `/${username}/recent`,
-  },
-  {
-    title: "我的书签",
-    icon: Bookmark,
-    href: (username: string) => `/${username}/bookmarks`,
-  },
-];
+function isValidUserStatus(
+  status: string
+): status is (typeof USER_STATUS)[keyof typeof USER_STATUS] {
+  return Object.values(USER_STATUS).includes(status as any);
+}
 
-const libraryMenu = [
-  {
-    title: "收藏夹",
-    icon: FolderHeart,
-    href: (username: string) => `/${username}/collections`,
-  },
-  {
-    title: "标签",
-    icon: Tag,
-    href: (username: string) => `/${username}/tags`,
-  },
-  {
-    title: "已收藏",
-    icon: Star,
-    href: (username: string) => `/${username}/starred`,
-  },
-  {
-    title: "已分享",
-    icon: Share2,
-    href: (username: string) => `/${username}/shared`,
-  },
-];
+export const loader: LoaderFunction = async ({ request, params }) => {
+  const username = params.username;
 
-export function UserLayout({ children, user }: UserLayoutProps) {
-  const [isLibraryOpen, setIsLibraryOpen] = useState(true);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [showUserDialog, setShowUserDialog] = useState(false);
-  const location = useLocation();
+  // 获取页面用户数据
+  const pageUser = await prisma.user.findUnique({
+    where: { name: username },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      emailVerified: true,
+      avatar: true,
+      role: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: {
+        select: {
+          bookmarks: true,
+          collections: true,
+          tags: true,
+          starredBookmarks: true,
+        },
+      },
+    },
+  });
 
-  const isActiveLink = (href: string) => location.pathname === href;
+  if (!pageUser) {
+    throw new Response("用户不存在", { status: 404 });
+  }
 
-  // 处理收藏夹展开/收起
-  const handleLibraryToggle = (open: boolean) => {
-    setIsLibraryOpen(open);
-  };
+  // 验证角色和状态
+  if (!isValidUserRole(pageUser.role)) {
+    throw new Error(`无效的用户角色: ${pageUser.role}`);
+  }
 
-  // 处理侧边栏折叠
-  const handleSidebarToggle = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsSidebarOpen(!isSidebarOpen);
-  };
+  if (!isValidUserStatus(pageUser.status)) {
+    throw new Error(`无效的用户状态: ${pageUser.status}`);
+  }
 
-  // 处理用户设置点击
-  const handleUserClick = () => {
-    setShowUserDialog(true);
-  };
+  // 检查用户状态
+  if (pageUser.status === USER_STATUS.SUSPENDED) {
+    throw new Response("用户已被禁用", { status: 403 });
+  }
+
+  // 获取当前登录用户
+  const currentUser = await authenticator.isAuthenticated(request);
+  const isOwner = currentUser?.id === pageUser.id;
+
+  // 如果不是本人且未登录，重定向到登录页面
+  if (!isOwner && !currentUser) {
+    const searchParams = new URLSearchParams([["redirectTo", request.url]]);
+    return redirect(`/login?${searchParams.toString()}`);
+  }
+
+  return json<LoaderData>({
+    user: {
+      ...pageUser,
+      role: pageUser.role as (typeof USER_ROLE)[keyof typeof USER_ROLE],
+      status: pageUser.status as (typeof USER_STATUS)[keyof typeof USER_STATUS],
+      createdAt: pageUser.createdAt.toISOString(),
+      updatedAt: pageUser.updatedAt.toISOString(),
+    },
+    isOwner,
+  });
+};
+
+export default function UserRoute() {
+  const { user, isOwner } = useLoaderData<LoaderData>();
+  const navigation = useNavigation();
+  const isLoading = navigation.state === "loading";
 
   return (
-    <SidebarProvider>
-      <TooltipProvider delayDuration={0}>
-        <div className="flex w-full min-h-svh">
-          {/* 侧边栏 */}
-          <div
-            className={cn(
-              "fixed inset-y-0 left-0 z-40 flex transition-all duration-300 ease-in-out",
-              isSidebarOpen ? "w-64" : "w-16",
-              "bg-background/80 backdrop-blur-sm border-r border-border/10"
-            )}
-          >
-            <Sidebar className="w-full border-r border-border/40 flex flex-col">
-              {/* 侧边栏头部 */}
-              <SidebarHeader className="border-b border-border/40 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  {/* Logo 添加淡入淡出效果 */}
-                  <div
-                    className={cn(
-                      "transition-all duration-300 ease-in-out",
-                      isSidebarOpen
-                        ? "opacity-100"
-                        : "opacity-0 w-0 overflow-hidden"
-                    )}
-                  >
-                    <Link
-                      to="/"
-                      className="text-xl font-bold bg-gradient-to-r from-blue-400 via-violet-400 to-blue-400 bg-clip-text text-transparent hover:opacity-80 transition-all"
-                    >
-                      LinkFlow
-                    </Link>
-                  </div>
-                  <div
-                    className={cn(
-                      "flex items-center transition-all duration-300 ease-in-out",
-                      !isSidebarOpen && "w-full justify-center"
-                    )}
-                  >
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 shrink-0 transition-transform duration-300 ease-in-out"
-                      onClick={handleSidebarToggle}
-                    >
-                      <div
-                        className={cn(
-                          "transition-transform duration-300 ease-in-out",
-                          !isSidebarOpen && "rotate-180"
-                        )}
-                      >
-                        <PanelLeftClose className="h-5 w-5" />
-                      </div>
-                    </Button>
-                  </div>
-                </div>
-              </SidebarHeader>
-
-              {/* 侧边栏内容 */}
-              <SidebarContent className="flex-1">
-                <ScrollArea className="h-full">
-                  <div
-                    className={cn(
-                      "space-y-6 transition-all duration-300 ease-in-out",
-                      isSidebarOpen ? "p-4" : "p-2"
-                    )}
-                  >
-                    {/* 主导航菜单 */}
-                    <nav className="space-y-1">
-                      {navigationMenu.map((item) => {
-                        const href = item.href(user.name);
-                        const isActive = isActiveLink(href);
-                        return (
-                          <Tooltip key={item.title}>
-                            <TooltipTrigger asChild>
-                              <Link
-                                to={href}
-                                className={cn(
-                                  "group flex items-center gap-x-3 rounded-md py-2 text-sm font-medium",
-                                  "transition-all hover:bg-accent/50",
-                                  isActive &&
-                                    "bg-accent text-accent-foreground",
-                                  isSidebarOpen ? "px-3" : "justify-center px-2"
-                                )}
-                              >
-                                <item.icon className="h-5 w-5 shrink-0" />
-                                {isSidebarOpen && <span>{item.title}</span>}
-                              </Link>
-                            </TooltipTrigger>
-                            <TooltipContent side="right" sideOffset={10}>
-                              {item.title}
-                            </TooltipContent>
-                          </Tooltip>
-                        );
-                      })}
-                    </nav>
-
-                    {/* 资料库菜单 */}
-                    {isSidebarOpen ? (
-                      <Collapsible
-                        open={isLibraryOpen}
-                        onOpenChange={handleLibraryToggle}
-                      >
-                        <div className="space-y-1">
-                          <CollapsibleTrigger asChild>
-                            <button className="flex w-full items-center justify-between px-3 py-2 hover:bg-accent/50 rounded-md transition-colors">
-                              <span className="flex items-center gap-2">
-                                <Library className="h-5 w-5" />
-                                <span className="text-xs font-semibold uppercase tracking-wider">
-                                  资料库
-                                </span>
-                              </span>
-                            </button>
-                          </CollapsibleTrigger>
-
-                          <CollapsibleContent>
-                            <div className="space-y-1 pt-1">
-                              {libraryMenu.map((item) => (
-                                <Tooltip key={item.title}>
-                                  <TooltipTrigger asChild>
-                                    <Link
-                                      to={item.href(user.name)}
-                                      className="flex items-center gap-x-3 rounded-md px-3 py-2 text-sm font-medium pl-9 hover:bg-accent/50 transition-colors"
-                                    >
-                                      <item.icon className="h-5 w-5" />
-                                      <span>{item.title}</span>
-                                    </Link>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="right">
-                                    {item.title}
-                                  </TooltipContent>
-                                </Tooltip>
-                              ))}
-                            </div>
-                          </CollapsibleContent>
-                        </div>
-                      </Collapsible>
-                    ) : (
-                      <nav className="space-y-1">
-                        {libraryMenu.map((item) => (
-                          <Tooltip key={item.title}>
-                            <TooltipTrigger asChild>
-                              <Link
-                                to={item.href(user.name)}
-                                className="flex justify-center rounded-md p-2 hover:bg-accent/50 transition-colors"
-                              >
-                                <item.icon className="h-5 w-5" />
-                              </Link>
-                            </TooltipTrigger>
-                            <TooltipContent side="right">
-                              {item.title}
-                            </TooltipContent>
-                          </Tooltip>
-                        ))}
-                      </nav>
-                    )}
-                  </div>
-                </ScrollArea>
-              </SidebarContent>
-
-              {/* 用户信息（底部） - 添加内容过渡效果 */}
-              <div className="border-t border-border/40 p-4">
-                <button
-                  onClick={handleUserClick}
-                  className={cn(
-                    "flex w-full items-center gap-4 rounded-lg p-2",
-                    "hover:bg-accent/50 active:bg-accent/70 transition-all duration-300 ease-in-out",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    !isSidebarOpen && "justify-center"
-                  )}
-                >
-                  <Avatar className="h-9 w-9 ring-2 ring-border/40 transition-all duration-300 ease-in-out">
-                    {user.avatar ? (
-                      <AvatarImage src={user.avatar} alt={user.name} />
-                    ) : (
-                      <AvatarFallback className="bg-gradient-to-br from-blue-500/50 to-violet-500/50 text-white">
-                        {user.name[0].toUpperCase()}
-                      </AvatarFallback>
-                    )}
-                  </Avatar>
-                  {/* 用户信息淡入淡出效果 */}
-                  <div
-                    className={cn(
-                      "flex-1 overflow-hidden transition-all duration-300 ease-in-out",
-                      isSidebarOpen ? "opacity-100 w-auto" : "opacity-0 w-0"
-                    )}
-                  >
-                    {isSidebarOpen && (
-                      <>
-                        <p className="text-sm font-medium leading-none truncate">
-                          {user.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground truncate mt-1">
-                          {user.email}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                  {isSidebarOpen && (
-                    <Settings className="h-5 w-5 text-muted-foreground transition-opacity duration-300 ease-in-out" />
-                  )}
-                </button>
-              </div>
-            </Sidebar>
-          </div>
-
-          {/* 主内容区域 - 添加平滑过渡 */}
-          <div
-            className={cn(
-              "flex-1 relative transition-all duration-300 ease-in-out",
-              isSidebarOpen ? "ml-64" : "ml-16"
-            )}
-          >
-            <main className="absolute inset-0 bg-gradient-to-br from-background via-background to-background/80">
-              <ScrollArea className="h-full">
-                <div className="p-6 min-h-[calc(100vh-3rem)]">{children}</div>
-              </ScrollArea>
-            </main>
-          </div>
-
-          <SettingsDialog
-            open={showUserDialog}
-            onOpenChange={setShowUserDialog}
-            user={user}
-          />
+    <>
+      {/* 全局加载状态 */}
+      {isLoading && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
-      </TooltipProvider>
-    </SidebarProvider>
+      )}
+
+      {/* 用户布局 */}
+      <UserLayout user={user}>
+        {/* 子路由容器 */}
+        <div className="relative flex-1 w-full">
+          <Outlet context={{ isOwner }} />
+        </div>
+      </UserLayout>
+    </>
+  );
+}
+
+// 错误页面组件
+interface ErrorPageProps {
+  title: string;
+  message: string;
+  details?: React.ReactNode;
+}
+
+function ErrorPage({ title, message, details }: ErrorPageProps) {
+  return (
+    <div className="flex min-h-screen bg-background">
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="max-w-md w-full text-center space-y-4">
+          <h1 className="text-4xl font-bold">{title}</h1>
+          <p className="text-muted-foreground">{message}</p>
+          {details && (
+            <div className="mt-4 text-sm text-muted-foreground">{details}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  if (isRouteErrorResponse(error)) {
+    const errorDetails = {
+      404: {
+        title: "用户不存在",
+        message: "请检查链接是否正确，或者稍后再试",
+      },
+      403: {
+        title: "访问受限",
+        message: error.data || "您没有权限访问此页面",
+        details: (
+          <>
+            这可能是因为：
+            <ul className="list-disc list-inside mt-2">
+              <li>该用户已将账号设为私密</li>
+              <li>您需要登录后才能访问</li>
+              <li>该账号已被禁用</li>
+            </ul>
+          </>
+        ),
+      },
+    }[error.status] || {
+      title: "出错了",
+      message: "发生了一些错误，请稍后再试",
+    };
+
+    return <ErrorPage {...errorDetails} />;
+  }
+
+  return (
+    <ErrorPage
+      title="服务器错误"
+      message="抱歉，服务器出现了一些问题，请稍后再试"
+    />
   );
 }

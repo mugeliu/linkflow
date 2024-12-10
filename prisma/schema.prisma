@@ -29,6 +29,8 @@ model Collection {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// 收藏夹中的所有书签
   bookmarks   Bookmark[]
+  /// 是否公开
+  isPublic    Boolean    @default(true)
 
   @@index([userId])
 }
@@ -117,7 +119,7 @@ model Verification {
 }
 
 model Bookmark {
-  /// 书签唯一标识符
+  /// 书签唯一标��符
   id          String    @id @default(cuid())
   /// 书签的网页地址
   url         String
@@ -186,4 +188,15 @@ model StarredBookmark {
   @@id([userId, bookmarkId])
   @@index([userId])
   @@index([bookmarkId])
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  type      String   // "bookmark" | "collection" | "star"
+  title     String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+
+  @@index([userId])
 } 
